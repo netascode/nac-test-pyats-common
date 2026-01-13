@@ -28,7 +28,7 @@ keywords = ["cisco", "network", "testing", "pyats", "nac", "aci", "sdwan", "cata
 
 dependencies = [
     "httpx>=0.28",        # HTTP client for auth
-    "nac-test @ git+https://github.com/netascode/nac-test.git@v1.1.0b2",
+    "nac-test>=1.1.0b2",
 ]
 
 [project.optional-dependencies]

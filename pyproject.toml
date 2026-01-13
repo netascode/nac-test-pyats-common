@@ -1,6 +1,6 @@
 [project]
 name = "nac-test-pyats-common"
-version = "0.1.0"
+version = "0.1.1"
 description = "Architecture adapters for Network as Code (NaC) PyATS testing - auth classes, test base classes, and device resolvers"
 readme = "README.md"
 requires-python = ">=3.10"

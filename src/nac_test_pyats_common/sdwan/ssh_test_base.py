@@ -48,6 +48,10 @@ class SDWANTestBase(SSHTestBase):  # type: ignore[misc]
                 pass
     """
 
+    # Class-level storage for the last resolver instance
+    # This allows nac-test to access skipped_devices after calling get_ssh_device_inventory()
+    _last_resolver: "SDWANDeviceResolver | None" = None
+
     @classmethod
     def get_ssh_device_inventory(
         cls, data_model: dict[str, Any]
@@ -57,10 +61,12 @@ class SDWANTestBase(SSHTestBase):  # type: ignore[misc]
         This method is the entry point called by nac-test's orchestrator.
         All device inventory resolution is delegated to SDWANDeviceResolver,
         which handles:
-        - Test inventory loading (test_inventory.yaml)
         - Schema navigation (sites[].routers[])
-        - Variable resolution (hostnames, IPs)
+        - Management IP resolution via management_ip_variable
         - Credential injection (IOSXE_USERNAME, IOSXE_PASSWORD)
+
+        After calling this method, access cls._last_resolver.skipped_devices
+        to get information about devices that failed resolution.
 
         Args:
             data_model: The merged data model from nac-test containing all
@@ -80,13 +86,8 @@ class SDWANTestBase(SSHTestBase):  # type: ignore[misc]
         """
         logger.info("SDWANTestBase: Resolving device inventory via SDWANDeviceResolver")
 
-        # Delegate entirely to the resolver
-        # SDWANDeviceResolver handles:
-        # 1. Test inventory loading via BaseDeviceResolver._load_inventory()
-        # 2. Schema navigation via navigate_to_devices()
-        # 3. Credential injection via _inject_credentials() using IOSXE_* env vars
-        resolver = SDWANDeviceResolver(data_model)
-        return resolver.get_resolved_inventory()
+        cls._last_resolver = SDWANDeviceResolver(data_model)
+        return cls._last_resolver.get_resolved_inventory()
 
     def get_device_credentials(self, device: dict[str, Any]) -> dict[str, str | None]:
         """Get SD-WAN edge device SSH credentials from environment variables.

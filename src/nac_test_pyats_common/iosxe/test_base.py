@@ -21,6 +21,10 @@ class IOSXETestBase(SSHTestBase):  # type: ignore[misc]
     - IOS-XE (direct device access via IOSXE_URL)
     """
 
+    # Class-level storage for the last resolver instance
+    # This allows nac-test to access skipped_devices after calling get_ssh_device_inventory()
+    _last_resolver: Any = None
+
     @classmethod
     def get_ssh_device_inventory(
         cls, data_model: dict[str, Any]
@@ -63,6 +67,7 @@ class IOSXETestBase(SSHTestBase):  # type: ignore[misc]
                 f"No device resolver registered for controller type '{controller_type}'"
             )
         resolver = resolver_class(data_model)
+        cls._last_resolver = resolver  # Store for skipped_devices access
 
         # Inline validation: Check data model has expected root key
         expected_keys = {

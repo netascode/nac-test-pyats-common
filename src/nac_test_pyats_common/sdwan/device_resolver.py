@@ -25,13 +25,20 @@ class SDWANDeviceResolver(BaseDeviceResolver):
 
     Schema structure:
         sdwan:
+          management_ip_variable: "vpn511_int1_if_ipv4_address"  # Global default
           sites:
             - name: "site1"
               routers:
                 - chassis_id: "abc123"
+                  management_ip_variable: "custom_mgmt_ip"  # Router override
                   device_variables:
                     system_hostname: "router1"
-                    vpn10_mgmt_ip: "10.1.1.100/32"
+                    vpn511_int1_if_ipv4_address: "10.1.1.100/32"
+                    custom_mgmt_ip: "10.2.2.200/32"
+
+    Management IP Resolution Priority:
+        1. Router-level management_ip_variable (highest priority)
+        2. Global sdwan-level management_ip_variable (fallback)
 
     Credentials:
         Uses IOSXE_USERNAME and IOSXE_PASSWORD environment variables
@@ -56,7 +63,7 @@ class SDWANDeviceResolver(BaseDeviceResolver):
         """Return 'sdwan' as the root key in the data model.
 
         Returns:
-            Root key used when loading test inventory and navigating schema.
+            Root key used when navigating the schema.
         """
         return "sdwan"
 
@@ -126,6 +133,10 @@ class SDWANDeviceResolver(BaseDeviceResolver):
         Uses management_ip_variable field to determine which variable
         contains the management IP.
 
+        Resolution priority:
+        1. Router-level management_ip_variable (highest priority)
+        2. Global sdwan-level management_ip_variable (fallback)
+
         Args:
             device_data: Router data dictionary from the data model.
 
@@ -133,27 +144,28 @@ class SDWANDeviceResolver(BaseDeviceResolver):
             IP address string without CIDR notation (e.g., "10.1.1.100").
 
         Raises:
-            ValueError: If no management IP can be found.
+            ValueError: If management_ip_variable is not configured or
+                the referenced variable is not found in device_variables.
         """
         device_vars = device_data.get("device_variables", {})
 
-        # Get the variable name that contains the management IP
+        # Cascading lookup: router-level > global sdwan-level
         ip_var = device_data.get("management_ip_variable")
+        if not ip_var:
+            ip_var = self.data_model.get("sdwan", {}).get("management_ip_variable")
 
-        if ip_var and ip_var in device_vars:
-            ip_value = str(device_vars[ip_var])
-        else:
-            # Fallback: try common variable names
-            for fallback_var in ["mgmt_ip", "management_ip", "vpn0_ip"]:
-                if fallback_var in device_vars:
-                    ip_value = str(device_vars[fallback_var])
-                    break
-            else:
-                raise ValueError(
-                    "Could not find management IP for device. "
-                    "Set 'management_ip_variable' in test_inventory or use "
-                    "standard variable names (mgmt_ip, management_ip, vpn0_ip)."
-                )
+        if not ip_var:
+            raise ValueError(
+                "management_ip_variable not configured. "
+                "Set it at router level or sdwan level in sites.nac.yaml."
+            )
+
+        if ip_var not in device_vars:
+            raise ValueError(
+                f"management_ip_variable '{ip_var}' not found in device_variables."
+            )
+
+        ip_value = str(device_vars[ip_var])
 
         # Strip CIDR notation if present
         if "/" in ip_value:
@@ -162,15 +174,35 @@ class SDWANDeviceResolver(BaseDeviceResolver):
         return ip_value
 
     def extract_os_type(self, device_data: dict[str, Any]) -> str:
-        """Extract OS type, defaulting to 'iosxe' for SD-WAN edges.
+        """Return 'iosxe' as all SD-WAN edge devices are IOS-XE based.
+
+        Args:
+            device_data: Router data dictionary (unused, OS is hardcoded).
+
+        Returns:
+            Always returns 'iosxe'.
+        """
+        return "iosxe"
+
+    def build_device_dict(self, device_data: dict[str, Any]) -> dict[str, Any]:
+        """Build device dictionary with SD-WAN specific defaults.
+
+        Extends the base implementation to add type='router' since
+        all SD-WAN edge devices are routers.
 
         Args:
             device_data: Router data dictionary from the data model.
 
         Returns:
-            OS type string (e.g., "iosxe", "nxos", "iosxr").
+            Device dictionary with hostname, host, os, device_id, and type.
         """
-        return str(device_data.get("os", "iosxe"))
+        # Get base device dict from parent
+        device_dict = super().build_device_dict(device_data)
+
+        # Add type - all SD-WAN edges are routers
+        device_dict["type"] = "router"
+
+        return device_dict
 
     def get_credential_env_vars(self) -> tuple[str, str]:
         """Return IOS-XE credential env vars for SD-WAN edge devices.

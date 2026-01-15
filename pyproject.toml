@@ -28,7 +28,7 @@ keywords = ["cisco", "network", "testing", "pyats", "nac", "aci", "sdwan", "cata
 
 dependencies = [
     "httpx>=0.28",        # HTTP client for auth
-    "nac-test==1.1.0b2",  # Pinned until nac-test stable release includes pyats functionality
+    "nac-test==1.2.2",  # Pinned until nac-test stable release includes pyats functionality
 ]
 
 [project.optional-dependencies]

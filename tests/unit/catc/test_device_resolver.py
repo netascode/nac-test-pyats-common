@@ -41,8 +41,7 @@ def sample_data_model() -> dict[str, Any]:
                         "fqdn_name": "P3-BN1.cisco.eu",
                         "device_ip": "192.168.38.1",
                         "pid": "C9300-24P",
-                        "state": "INIT",
-                        "device_role": "ACCESS",
+                        "state": "ACCESS",
                         "site": "Global/MAX_AREA/MAX_BUILDING",
                     },
                     {
@@ -129,6 +128,75 @@ class TestSchemaNavigation:
         assert len(devices) == 0
 
 
+class TestDeviceValidation:
+    """Test device data validation."""
+
+    def test_validate_device_data_rejects_init_state(
+        self, sample_data_model: dict[str, Any]
+    ) -> None:
+        """Test that devices with INIT state are rejected."""
+        resolver = CatalystCenterDeviceResolver(sample_data_model)
+        device_data = {
+            "name": "INIT-DEVICE",
+            "device_ip": "10.1.1.1",
+            "state": "INIT",
+        }
+
+        with pytest.raises(ValueError) as exc_info:
+            resolver.validate_device_data(device_data)
+
+        assert "unsupported state 'INIT'" in str(exc_info.value)
+        assert "not fully provisioned" in str(exc_info.value)
+
+    def test_validate_device_data_rejects_pnp_state(
+        self, sample_data_model: dict[str, Any]
+    ) -> None:
+        """Test that devices with PNP state are rejected."""
+        resolver = CatalystCenterDeviceResolver(sample_data_model)
+        device_data = {
+            "name": "PNP-DEVICE",
+            "device_ip": "10.1.1.2",
+            "state": "PNP",
+        }
+
+        with pytest.raises(ValueError) as exc_info:
+            resolver.validate_device_data(device_data)
+
+        assert "unsupported state 'PNP'" in str(exc_info.value)
+
+    def test_validate_device_data_case_insensitive(
+        self, sample_data_model: dict[str, Any]
+    ) -> None:
+        """Test that state check is case-insensitive."""
+        resolver = CatalystCenterDeviceResolver(sample_data_model)
+        device_data = {
+            "name": "INIT-DEVICE",
+            "device_ip": "10.1.1.1",
+            "state": "init",  # lowercase
+        }
+
+        with pytest.raises(ValueError) as exc_info:
+            resolver.validate_device_data(device_data)
+
+        assert "unsupported state 'INIT'" in str(exc_info.value)
+
+    def test_validate_device_data_accepts_valid_states(
+        self, sample_data_model: dict[str, Any]
+    ) -> None:
+        """Test that devices with valid states pass validation."""
+        resolver = CatalystCenterDeviceResolver(sample_data_model)
+
+        # Test various valid states
+        for state in ["ACCESS", "BORDER_NODE", "CORE", "DISTRIBUTION", ""]:
+            device_data = {
+                "name": f"DEVICE-{state}",
+                "device_ip": "10.1.1.1",
+                "state": state,
+            }
+            # Should not raise exception
+            resolver.validate_device_data(device_data)
+
+
 class TestDeviceFieldExtraction:
     """Test extraction of device fields."""
 
@@ -151,55 +219,6 @@ class TestDeviceFieldExtraction:
             resolver.extract_device_id(device_data)
 
         assert "missing 'name' field" in str(exc_info.value).lower()
-
-    def test_extract_device_id_skip_init_role(
-        self, sample_data_model: dict[str, Any]
-    ) -> None:
-        """Test that devices with INIT role are skipped."""
-        resolver = CatalystCenterDeviceResolver(sample_data_model)
-        device_data = {
-            "name": "INIT-DEVICE",
-            "device_ip": "10.1.1.1",
-            "device_role": "INIT",
-        }
-
-        with pytest.raises(ValueError) as exc_info:
-            resolver.extract_device_id(device_data)
-
-        assert "unsupported device_role 'INIT'" in str(exc_info.value)
-        assert "not fully provisioned" in str(exc_info.value)
-
-    def test_extract_device_id_skip_pnp_role(
-        self, sample_data_model: dict[str, Any]
-    ) -> None:
-        """Test that devices with PNP role are skipped."""
-        resolver = CatalystCenterDeviceResolver(sample_data_model)
-        device_data = {
-            "name": "PNP-DEVICE",
-            "device_ip": "10.1.1.2",
-            "device_role": "PNP",
-        }
-
-        with pytest.raises(ValueError) as exc_info:
-            resolver.extract_device_id(device_data)
-
-        assert "unsupported device_role 'PNP'" in str(exc_info.value)
-
-    def test_extract_device_id_case_insensitive_role(
-        self, sample_data_model: dict[str, Any]
-    ) -> None:
-        """Test that device_role check is case-insensitive."""
-        resolver = CatalystCenterDeviceResolver(sample_data_model)
-        device_data = {
-            "name": "INIT-DEVICE",
-            "device_ip": "10.1.1.1",
-            "device_role": "init",  # lowercase
-        }
-
-        with pytest.raises(ValueError) as exc_info:
-            resolver.extract_device_id(device_data)
-
-        assert "unsupported device_role 'INIT'" in str(exc_info.value)
 
     def test_extract_hostname_success(self, sample_data_model: dict[str, Any]) -> None:
         """Test successful hostname extraction from 'name' field."""
@@ -453,11 +472,11 @@ class TestErrorHandlingAndSkippedDevices:
         assert len(devices) == 1
         assert len(resolver.skipped_devices) == 2
 
-    def test_skip_devices_with_init_and_pnp_roles(
+    def test_skip_devices_with_init_and_pnp_states(
         self,
         mock_credentials: None,
     ) -> None:
-        """Test that devices with INIT and PNP roles are skipped during resolution."""
+        """Test that devices with INIT and PNP states are skipped during resolution."""
         data_model = {
             "catalyst_center": {
                 "inventory": {
@@ -465,22 +484,22 @@ class TestErrorHandlingAndSkippedDevices:
                         {
                             "name": "P3-BN1",
                             "device_ip": "192.168.38.1",
-                            "device_role": "ACCESS",
+                            "state": "ACCESS",
                         },
                         {
                             "name": "INIT-DEVICE",
                             "device_ip": "192.168.38.2",
-                            "device_role": "INIT",
+                            "state": "INIT",
                         },
                         {
                             "name": "PNP-DEVICE",
                             "device_ip": "192.168.38.3",
-                            "device_role": "PNP",
+                            "state": "PNP",
                         },
                         {
                             "name": "P3-BN2",
                             "device_ip": "192.168.38.4",
-                            "device_role": "BORDER_NODE",
+                            "state": "BORDER_NODE",
                         },
                     ]
                 }
@@ -500,15 +519,15 @@ class TestErrorHandlingAndSkippedDevices:
 
         # Check INIT device was skipped with correct reason
         init_skipped = [
-            d for d in resolver.skipped_devices if "device_role 'INIT'" in d["reason"]
+            d for d in resolver.skipped_devices if "state 'INIT'" in d["reason"]
         ]
         assert len(init_skipped) == 1
-        assert "unsupported device_role 'INIT'" in init_skipped[0]["reason"]
+        assert "unsupported state 'INIT'" in init_skipped[0]["reason"]
         assert "not fully provisioned" in init_skipped[0]["reason"]
 
         # Check PNP device was skipped with correct reason
         pnp_skipped = [
-            d for d in resolver.skipped_devices if "device_role 'PNP'" in d["reason"]
+            d for d in resolver.skipped_devices if "state 'PNP'" in d["reason"]
         ]
         assert len(pnp_skipped) == 1
-        assert "unsupported device_role 'PNP'" in pnp_skipped[0]["reason"]
+        assert "unsupported state 'PNP'" in pnp_skipped[0]["reason"]

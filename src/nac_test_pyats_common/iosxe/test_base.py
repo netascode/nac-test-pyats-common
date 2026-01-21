@@ -22,7 +22,8 @@ class IOSXETestBase(SSHTestBase):  # type: ignore[misc]
     """
 
     # Class-level storage for the last resolver instance
-    # This allows nac-test to access skipped_devices after calling get_ssh_device_inventory()
+    # This allows nac-test to access skipped_devices after calling
+    # get_ssh_device_inventory()
     _last_resolver: Any = None
 
     @classmethod

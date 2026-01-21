@@ -463,7 +463,7 @@ class TestOptionalOverrides:
         class CustomResolver(MockDeviceResolver):
             def build_device_dict(self, device_data: dict[str, Any]) -> dict[str, Any]:
                 # Call parent implementation
-                device_dict = super().build_device_dict(device_data)
+                device_dict: dict[str, Any] = super().build_device_dict(device_data)
 
                 # Add custom fields
                 device_dict["custom_field"] = "custom_value"
@@ -477,6 +477,109 @@ class TestOptionalOverrides:
         for device in devices:
             assert device["custom_field"] == "custom_value"
             assert "site_id" in device
+
+
+class TestDeviceValidation:
+    """Test the validate_device_data hook."""
+
+    def test_default_validation_accepts_all_devices(
+        self,
+        sample_data_model: dict[str, Any],
+        mock_credentials: None,
+    ) -> None:
+        """Test that default validation accepts all devices."""
+        resolver = MockDeviceResolver(sample_data_model)
+        devices = resolver.get_resolved_inventory()
+
+        # All 3 devices from sample_data_model should be resolved
+        assert len(devices) == 3
+        assert len(resolver.skipped_devices) == 0
+
+    def test_custom_validation_can_skip_devices(
+        self,
+        mock_credentials: None,
+    ) -> None:
+        """Test that custom validation can skip specific devices."""
+
+        class ValidatingResolver(MockDeviceResolver):
+            def validate_device_data(self, device_data: dict[str, Any]) -> None:
+                # Skip devices with specific site_id
+                if device_data.get("site_id") == "skip-me":
+                    raise ValueError("Device at skip-me site should be skipped")
+
+        data_model = {
+            "mock": {
+                "devices": [
+                    {
+                        "device_id": "device1",
+                        "hostname": "host1",
+                        "host": "10.1.1.1",
+                        "os": "iosxe",
+                        "site_id": "keep-me",
+                    },
+                    {
+                        "device_id": "device2",
+                        "hostname": "host2",
+                        "host": "10.1.1.2",
+                        "os": "iosxe",
+                        "site_id": "skip-me",
+                    },
+                    {
+                        "device_id": "device3",
+                        "hostname": "host3",
+                        "host": "10.1.1.3",
+                        "os": "iosxe",
+                        "site_id": "keep-me",
+                    },
+                ]
+            }
+        }
+
+        resolver = ValidatingResolver(data_model)
+        devices = resolver.get_resolved_inventory()
+
+        # Only 2 devices should be resolved (skipping device2)
+        assert len(devices) == 2
+        assert len(resolver.skipped_devices) == 1
+        assert resolver.skipped_devices[0]["device_id"] == "device2"
+        assert "skip-me" in resolver.skipped_devices[0]["reason"]
+
+    def test_validation_called_before_extraction(
+        self,
+        mock_credentials: None,
+    ) -> None:
+        """Test that validation is called before field extraction."""
+        call_order: list[str] = []
+
+        class OrderTrackingResolver(MockDeviceResolver):
+            def validate_device_data(self, device_data: dict[str, Any]) -> None:
+                call_order.append("validate")
+
+            def extract_device_id(self, device_data: dict[str, Any]) -> str:
+                call_order.append("extract_id")
+                return super().extract_device_id(device_data)
+
+        data_model = {
+            "mock": {
+                "devices": [
+                    {
+                        "device_id": "device1",
+                        "hostname": "host1",
+                        "host": "10.1.1.1",
+                        "os": "iosxe",
+                    },
+                ]
+            }
+        }
+
+        resolver = OrderTrackingResolver(data_model)
+        resolver.get_resolved_inventory()
+
+        # Validation should be called before extraction
+        assert len(call_order) >= 2
+        validate_index = call_order.index("validate")
+        extract_index = call_order.index("extract_id")
+        assert validate_index < extract_index
 
 
 class TestErrorHandling:
@@ -540,9 +643,13 @@ class TestErrorHandling:
 
         resolver = ErrorResolver(sample_data_model)
 
-        # Should return "<unknown>" for error case
+        # Should return "<unknown>" when no fallback fields available
         result = resolver._safe_extract_device_id({"error": True})
         assert result == "<unknown>"
+
+        # Should fallback to 'name' field if extract_device_id fails
+        result = resolver._safe_extract_device_id({"error": True, "name": "device-abc"})
+        assert result == "device-abc"
 
         # Should return actual ID for valid case
         result = resolver._safe_extract_device_id({"device_id": "test123"})

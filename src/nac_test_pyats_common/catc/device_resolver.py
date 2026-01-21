@@ -31,7 +31,7 @@ class CatalystCenterDeviceResolver(BaseDeviceResolver):
                 fqdn_name: P3-BN1.cisco.eu
                 device_ip: 192.168.38.1
                 pid: C9300-24P
-                state: INIT
+                state: PROVISION
                 device_role: ACCESS
                 site: Global/MAX_AREA/MAX_BUILDING
 
@@ -77,6 +77,24 @@ class CatalystCenterDeviceResolver(BaseDeviceResolver):
         devices.extend(inventory.get("devices", []))
         return devices
 
+    def validate_device_data(self, device_data: dict[str, Any]) -> None:
+        """Validate device state before extraction.
+
+        Skip devices with INIT or PNP states as they are not fully provisioned.
+
+        Args:
+            device_data: Device data dictionary from the data model.
+
+        Raises:
+            ValueError: If the device has an unsupported state (INIT, PNP).
+        """
+        state = device_data.get("state", "").upper()
+        if state in ("INIT", "PNP"):
+            raise ValueError(
+                f"Device has unsupported state '{state}' "
+                "(devices in INIT or PNP state are not fully provisioned)"
+            )
+
     def extract_device_id(self, device_data: dict[str, Any]) -> str:
         """Extract device name as the device identifier.
 
@@ -87,21 +105,11 @@ class CatalystCenterDeviceResolver(BaseDeviceResolver):
             Unique device name string.
 
         Raises:
-            ValueError: If the device is missing the 'name' field or has
-                an unsupported device_role (INIT, PNP).
+            ValueError: If the device is missing the 'name' field.
         """
         name = device_data.get("name")
         if not name:
             raise ValueError("Device missing 'name' field")
-
-        # Skip devices with INIT or PNP roles (not fully provisioned)
-        device_role = device_data.get("device_role", "").upper()
-        if device_role in ("INIT", "PNP"):
-            raise ValueError(
-                f"Device has unsupported device_role '{device_role}' "
-                "(devices in INIT or PNP state are not fully provisioned)"
-            )
-
         return str(name)
 
     def extract_hostname(self, device_data: dict[str, Any]) -> str:

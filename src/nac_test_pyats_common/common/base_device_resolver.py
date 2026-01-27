@@ -8,6 +8,7 @@ Architecture-specific resolvers extend this class and implement the
 abstract methods for schema navigation and credential retrieval.
 """
 
+import ipaddress
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -27,14 +28,15 @@ class BaseDeviceResolver(ABC):
         - get_architecture_name(): Return architecture identifier (e.g., "sdwan")
         - get_schema_root_key(): Return the root key in data model (e.g., "sdwan")
         - navigate_to_devices(): Navigate schema to get iterable of device data
-        - extract_device_id(): Extract unique device identifier from device data
         - extract_hostname(): Extract hostname from device data
         - extract_host_ip(): Extract management IP from device data
         - extract_os_type(): Extract OS type from device data
         - get_credential_env_vars(): Return (username_env_var, password_env_var)
 
     Subclasses MAY override:
+        - extract_device_id(): Extract device identifier (default: uses hostname)
         - build_device_dict(): Customize device dict construction
+        - validate_device_data(): Pre-extraction validation hook
 
     Attributes:
         data_model: The merged NAC data model dictionary.
@@ -192,6 +194,15 @@ class BaseDeviceResolver(ABC):
             raise ValueError(f"Invalid hostname: {hostname!r}")
         if not isinstance(host, str) or not host:
             raise ValueError(f"Invalid host IP: {host!r}")
+
+        # Validate IP address format (after CIDR stripping done by subclass)
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            raise ValueError(
+                f"Invalid IP address format: '{host}'. "
+                "Ensure the field contains a valid IPv4 or IPv6 address."
+            ) from None
         if not isinstance(os_type, str) or not os_type:
             raise ValueError(f"Invalid OS type: {os_type!r}")
         if not isinstance(device_id, str) or not device_id:
@@ -292,9 +303,14 @@ class BaseDeviceResolver(ABC):
         """
         ...
 
-    @abstractmethod
     def extract_device_id(self, device_data: dict[str, Any]) -> str:
         """Extract unique device identifier from device data.
+
+        Default implementation delegates to extract_hostname(), which is
+        appropriate when device_id and hostname are the same field.
+
+        Override this method when your architecture has a distinct device
+        identifier (e.g., SD-WAN uses chassis_id, not hostname).
 
         Args:
             device_data: Device data dict from navigate_to_devices().
@@ -302,11 +318,11 @@ class BaseDeviceResolver(ABC):
         Returns:
             Unique device identifier string.
 
-        Example (SD-WAN):
+        Example (SD-WAN override):
             >>> def extract_device_id(self, device_data):
             ...     return device_data["chassis_id"]
         """
-        ...
+        return self.extract_hostname(device_data)
 
     @abstractmethod
     def extract_hostname(self, device_data: dict[str, Any]) -> str:
@@ -329,6 +345,8 @@ class BaseDeviceResolver(ABC):
         """Extract management IP address from device data.
 
         Should handle any IP formatting (e.g., strip CIDR notation).
+        The returned value will be validated by the base class to ensure
+        it is a valid IPv4 or IPv6 address.
 
         Args:
             device_data: Device data dict from navigate_to_devices().

@@ -95,23 +95,6 @@ class CatalystCenterDeviceResolver(BaseDeviceResolver):
                 "(devices in INIT or PNP state are not fully provisioned)"
             )
 
-    def extract_device_id(self, device_data: dict[str, Any]) -> str:
-        """Extract device name as the device identifier.
-
-        Args:
-            device_data: Device data dictionary from the data model.
-
-        Returns:
-            Unique device name string.
-
-        Raises:
-            ValueError: If the device is missing the 'name' field.
-        """
-        name = device_data.get("name")
-        if not name:
-            raise ValueError("Device missing 'name' field")
-        return str(name)
-
     def extract_hostname(self, device_data: dict[str, Any]) -> str:
         """Extract hostname from the 'name' field.
 

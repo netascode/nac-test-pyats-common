@@ -15,3 +15,8 @@ updates:
     # The workflow will auto-update uv.lock when pyproject.toml changes
     allow:
       - dependency-type: 'all'
+    ignore:
+      - dependency-name: "nac-test"
+        # TEMPORARY: Pinned to feature branch - manually managed
+        # Remove this ignore block after https://github.com/netascode/nac-test/tree/release/pyats-integration-v1.1-beta
+        # is merged into main of nac-test

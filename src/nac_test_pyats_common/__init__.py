@@ -29,7 +29,12 @@ __version__ = "1.0.0"
 
 # Public API - Import from subpackages
 from nac_test_pyats_common.aci import APICAuth, APICTestBase
-from nac_test_pyats_common.catc import CatalystCenterAuth, CatalystCenterTestBase
+from nac_test_pyats_common.catc import (
+    CatalystCenterAuth,
+    CatalystCenterDeviceResolver,
+    CatalystCenterSSHTestBase,
+    CatalystCenterTestBase,
+)
 from nac_test_pyats_common.sdwan import (
     SDWANDeviceResolver,
     SDWANManagerAuth,
@@ -49,4 +54,6 @@ __all__ = [
     # Catalyst Center
     "CatalystCenterAuth",
     "CatalystCenterTestBase",
+    "CatalystCenterSSHTestBase",
+    "CatalystCenterDeviceResolver",
 ]

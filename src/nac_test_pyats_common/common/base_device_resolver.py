@@ -97,6 +97,9 @@ class BaseDeviceResolver(ABC):
 
         for device_data in all_devices:
             try:
+                # Validate device data before extraction (optional hook)
+                self.validate_device_data(device_data)
+
                 device_dict = self.build_device_dict(device_data)
 
                 # Validate extracted fields
@@ -128,12 +131,40 @@ class BaseDeviceResolver(ABC):
         # Inject credentials (fail fast if missing)
         self._inject_credentials(resolved_devices)
 
+        skipped_msg = (
+            f", skipped {len(self.skipped_devices)}" if self.skipped_devices else ""
+        )
         logger.info(
             f"Resolved {len(resolved_devices)} devices for "
-            f"{self.get_architecture_name()} D2D testing"
-            f"{f', skipped {len(self.skipped_devices)}' if self.skipped_devices else ''}"
+            f"{self.get_architecture_name()} D2D testing{skipped_msg}"
         )
         return resolved_devices
+
+    def validate_device_data(self, _device_data: dict[str, Any]) -> None:  # noqa: B027
+        """Validate device data before extraction (optional hook).
+
+        Override this method to perform architecture-specific validation
+        before device field extraction. This is useful for filtering devices
+        based on state, type, or other criteria.
+
+        The default implementation does nothing - all devices pass validation.
+        Subclasses can override this to implement custom validation logic.
+
+        Args:
+            _device_data: Raw device data from the data model (unused in base class).
+
+        Raises:
+            ValueError: If the device should be skipped. The error message
+                will be logged and included in skipped_devices tracking.
+
+        Example (Catalyst Center - skip devices in INIT/PNP states):
+            >>> def validate_device_data(self, device_data):
+            ...     state = device_data.get("state", "").upper()
+            ...     if state in ("INIT", "PNP"):
+            ...         raise ValueError(f"Device has unsupported state '{state}'")
+        """
+        # Default implementation does nothing - subclasses can override
+        pass
 
     def build_device_dict(self, device_data: dict[str, Any]) -> dict[str, Any]:
         """Build a device dictionary from raw device data.

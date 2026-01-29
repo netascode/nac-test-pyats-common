@@ -24,6 +24,10 @@ class BaseDeviceResolver(ABC):
     resolution. It handles common logic (credential injection, device dict
     construction) while delegating schema-specific work to abstract methods.
 
+    Credentials are injected as environment variable references (%ENV{VARNAME})
+    rather than cleartext values for security. PyATS testbed loader will resolve
+    these references at runtime.
+
     Subclasses MUST implement:
         - get_architecture_name(): Return architecture identifier (e.g., "sdwan")
         - get_schema_root_key(): Return the root key in data model (e.g., "sdwan")
@@ -55,6 +59,8 @@ class BaseDeviceResolver(ABC):
         >>>
         >>> resolver = SDWANDeviceResolver(data_model)
         >>> devices = resolver.get_resolved_inventory()
+        >>> # devices[0]["username"] == "%ENV{IOSXE_USERNAME}"
+        >>> # devices[0]["password"] == "%ENV{IOSXE_PASSWORD}"
     """
 
     def __init__(self, data_model: dict[str, Any]) -> None:
@@ -75,7 +81,7 @@ class BaseDeviceResolver(ABC):
         1. Navigates the data model to find device data
         2. Extracts hostname and management IP from each device
         3. Sets OS type (architecture-specific, e.g., hardcoded to 'iosxe' for SD-WAN)
-        4. Injects SSH credentials from environment variables
+        4. Injects SSH credential environment variable references
         5. Returns list of device dicts ready for nac-test
 
         Returns:
@@ -83,8 +89,8 @@ class BaseDeviceResolver(ABC):
             - hostname (str)
             - host (str)
             - os (str)
-            - username (str)
-            - password (str)
+            - username (str): Environment variable reference in %ENV{VARNAME} format
+            - password (str): Environment variable reference in %ENV{VARNAME} format
             - Plus any architecture-specific fields
 
         Raises:
@@ -227,7 +233,16 @@ class BaseDeviceResolver(ABC):
             return "<unknown>"
 
     def _inject_credentials(self, devices: list[dict[str, Any]]) -> None:
-        """Inject SSH credentials from environment variables.
+        """Inject SSH credential environment variable references.
+
+        Injects credentials as %ENV{VARNAME} references instead of cleartext
+        values for security. PyATS testbed loader will resolve these at runtime.
+
+        This prevents credentials from existing in cleartext in Python memory
+        or being written to disk in testbed.yaml files.
+
+        If consumers need cleartext values, they can detect the %ENV{} pattern
+        and resolve via os.environ.get() themselves.
 
         Args:
             devices: List of device dicts to update in place.
@@ -236,14 +251,12 @@ class BaseDeviceResolver(ABC):
             ValueError: If required credential environment variables are not set.
         """
         username_var, password_var = self.get_credential_env_vars()
-        username = os.environ.get(username_var)
-        password = os.environ.get(password_var)
 
-        # FAIL FAST - raise error if credentials missing
+        # FAIL FAST - validate env vars are set (without reading values)
         missing_vars: list[str] = []
-        if not username:
+        if username_var not in os.environ:
             missing_vars.append(username_var)
-        if not password:
+        if password_var not in os.environ:
             missing_vars.append(password_var)
 
         if missing_vars:
@@ -253,10 +266,13 @@ class BaseDeviceResolver(ABC):
                 f"These are required for {self.get_architecture_name()} D2D testing."
             )
 
-        logger.debug(f"Injecting credentials from {username_var} and {password_var}")
+        # Inject environment variable references (not cleartext values)
+        logger.debug(
+            f"Injecting credential references for {username_var} and {password_var}"
+        )
         for device in devices:
-            device["username"] = username
-            device["password"] = password
+            device["username"] = f"%ENV{{{username_var}}}"
+            device["password"] = f"%ENV{{{password_var}}}"
 
     # -------------------------------------------------------------------------
     # Abstract methods - MUST be implemented by subclasses

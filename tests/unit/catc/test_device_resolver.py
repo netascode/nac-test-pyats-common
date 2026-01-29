@@ -291,13 +291,13 @@ class TestCredentialInjection:
         sample_data_model: dict[str, Any],
         mock_credentials: None,
     ) -> None:
-        """Test successful injection of credentials from environment variables."""
+        """Test successful injection of credential environment variable references."""
         resolver = CatalystCenterDeviceResolver(sample_data_model)
         devices = resolver.get_resolved_inventory()
 
         for device in devices:
-            assert device["username"] == "test_user"
-            assert device["password"] == "test_pass"
+            assert device["username"] == "%ENV{IOSXE_USERNAME}"
+            assert device["password"] == "%ENV{IOSXE_PASSWORD}"
 
     def test_error_when_username_env_var_missing(
         self,
@@ -352,8 +352,8 @@ class TestFullResolutionFlow:
         assert device1["host"] == "192.168.38.1"
         assert device1["os"] == "iosxe"
         assert device1["device_id"] == "P3-BN1"
-        assert device1["username"] == "test_user"
-        assert device1["password"] == "test_pass"
+        assert device1["username"] == "%ENV{IOSXE_USERNAME}"
+        assert device1["password"] == "%ENV{IOSXE_PASSWORD}"
 
         # Verify device with CIDR stripping
         device3 = devices[2]

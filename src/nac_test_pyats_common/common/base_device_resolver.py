@@ -238,8 +238,7 @@ class BaseDeviceResolver(ABC):
         Injects credentials as %ENV{VARNAME} references instead of cleartext
         values for security. PyATS testbed loader will resolve these at runtime.
 
-        This prevents credentials from existing in cleartext in Python memory
-        or being written to disk in testbed.yaml files.
+        This prevents credentials from being written to disk in testbed.yaml files.
 
         If consumers need cleartext values, they can detect the %ENV{} pattern
         and resolve via os.environ.get() themselves.

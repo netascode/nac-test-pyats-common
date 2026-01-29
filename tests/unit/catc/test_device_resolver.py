@@ -240,13 +240,14 @@ class TestDeviceFieldExtraction:
 
         assert "missing 'name' field" in str(exc_info.value).lower()
 
-    def test_extract_os_type(self, sample_data_model: dict[str, Any]) -> None:
-        """Test OS type extraction (hardcoded to 'iosxe')."""
+    def test_extract_os_platform_type(self, sample_data_model: dict[str, Any]) -> None:
+        """Test OS and platform info extraction (hardcoded to 'iosxe')."""
         resolver = CatalystCenterDeviceResolver(sample_data_model)
         device_data = sample_data_model["catalyst_center"]["inventory"]["devices"][0]
 
-        os_type = resolver.extract_os_type(device_data)
-        assert os_type == "iosxe"
+        os_platform_info = resolver.extract_os_platform_type(device_data)
+        assert isinstance(os_platform_info, dict)
+        assert os_platform_info["os"] == "iosxe"
 
 
 class TestManagementIPExtraction:

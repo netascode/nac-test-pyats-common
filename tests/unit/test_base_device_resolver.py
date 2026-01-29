@@ -48,9 +48,9 @@ class MockDeviceResolver(BaseDeviceResolver):
         """Extract IP address from device data."""
         return device_data["host"]  # type: ignore[no-any-return]
 
-    def extract_os_type(self, device_data: dict[str, Any]) -> str:
-        """Extract OS type from device data."""
-        return device_data["os"]  # type: ignore[no-any-return]
+    def extract_os_platform_type(self, device_data: dict[str, Any]) -> dict[str, str]:
+        """Extract OS and platform info from device data."""
+        return {"os": device_data["os"]}  # Just return os, no platform for mock
 
     def get_credential_env_vars(self) -> tuple[str, str]:
         """Return environment variable names for credentials."""
@@ -989,8 +989,10 @@ class TestExtractDeviceIdDefault:
             def extract_host_ip(self, device_data: dict[str, Any]) -> str:
                 return str(device_data["host"])
 
-            def extract_os_type(self, device_data: dict[str, Any]) -> str:
-                return str(device_data["os"])
+            def extract_os_platform_type(
+                self, device_data: dict[str, Any]
+            ) -> dict[str, str]:
+                return {"os": str(device_data["os"])}
 
             def get_credential_env_vars(self) -> tuple[str, str]:
                 return ("TEST_USER", "TEST_PASS")
@@ -1048,8 +1050,10 @@ class TestExtractDeviceIdDefault:
             def extract_host_ip(self, device_data: dict[str, Any]) -> str:
                 return str(device_data["host"])
 
-            def extract_os_type(self, device_data: dict[str, Any]) -> str:
-                return str(device_data["os"])
+            def extract_os_platform_type(
+                self, device_data: dict[str, Any]
+            ) -> dict[str, str]:
+                return {"os": str(device_data["os"])}
 
             def get_credential_env_vars(self) -> tuple[str, str]:
                 return ("TEST_USER", "TEST_PASS")

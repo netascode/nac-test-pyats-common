@@ -5,6 +5,16 @@
 
 This module provides the SDWANDeviceResolver class, which extends
 BaseDeviceResolver to implement SD-WAN schema navigation.
+
+Device Fields Returned:
+    - hostname: System hostname from device_variables.system_hostname
+    - host: Management IP address (CIDR stripped)
+    - os: Always 'iosxe' (SD-WAN edges are IOS-XE based)
+    - platform: Always 'sdwan' (for PyATS abstraction optimization)
+    - device_id: Chassis ID
+    - type: Always 'router'
+    - username: From IOSXE_USERNAME environment variable
+    - password: From IOSXE_PASSWORD environment variable
 """
 
 import logging
@@ -173,28 +183,33 @@ class SDWANDeviceResolver(BaseDeviceResolver):
 
         return ip_value
 
-    def extract_os_type(self, device_data: dict[str, Any]) -> str:
-        """Return 'iosxe' as all SD-WAN edge devices are IOS-XE based.
+    def extract_os_platform_type(self, device_data: dict[str, Any]) -> dict[str, str]:
+        """Return PyATS abstraction info for SD-WAN edge devices.
+
+        All SD-WAN edge devices are IOS-XE based with 'sdwan' platform.
 
         Args:
-            device_data: Router data dictionary (unused, OS is hardcoded).
+            device_data: Router data dictionary (unused, values are hardcoded).
 
         Returns:
-            Always returns 'iosxe'.
+            Dictionary with 'os' and 'platform' keys.
         """
-        return "iosxe"
+        return {
+            "os": "iosxe",
+            "platform": "sdwan",
+        }
 
     def build_device_dict(self, device_data: dict[str, Any]) -> dict[str, Any]:
         """Build device dictionary with SD-WAN specific defaults.
 
-        Extends the base implementation to add type='router' since
-        all SD-WAN edge devices are routers.
+        Extends the base implementation to add type='router'.
+        Platform is set to 'sdwan' via extract_os_platform_type().
 
         Args:
             device_data: Router data dictionary from the data model.
 
         Returns:
-            Device dictionary with hostname, host, os, device_id, and type.
+            Device dictionary with hostname, host, os, platform, device_id, and type.
         """
         # Get base device dict from parent
         device_dict = super().build_device_dict(device_data)

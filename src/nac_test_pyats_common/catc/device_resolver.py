@@ -141,16 +141,23 @@ class CatalystCenterDeviceResolver(BaseDeviceResolver):
 
         return ip_value
 
-    def extract_os_type(self, device_data: dict[str, Any]) -> str:
-        """Return 'iosxe' as all managed devices are IOS-XE based.
+    def extract_os_platform_type(self, device_data: dict[str, Any]) -> dict[str, str]:
+        """Return PyATS abstraction info for Catalyst Center managed devices.
+
+        All managed devices are currently IOS-XE based. Platform and model
+        could potentially be extracted from the 'pid' field in the future.
 
         Args:
-            device_data: Device data dictionary (unused, OS is hardcoded).
+            device_data: Device data dictionary from the data model.
 
         Returns:
-            Always returns 'iosxe'.
+            Dictionary with 'os' key (and potentially platform/model in future).
         """
-        return "iosxe"
+        return {
+            "os": "iosxe",
+            # Future enhancement: extract platform/model from pid field
+            # e.g., "C9300-24P" -> platform="cat9k", model="c9300"
+        }
 
     def get_credential_env_vars(self) -> tuple[str, str]:
         """Return IOS-XE credential env vars for managed devices.

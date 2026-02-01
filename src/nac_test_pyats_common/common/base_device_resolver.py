@@ -34,7 +34,7 @@ class BaseDeviceResolver(ABC):
         - navigate_to_devices(): Navigate schema to get iterable of device data
         - extract_hostname(): Extract hostname from device data
         - extract_host_ip(): Extract management IP from device data
-        - extract_os_type(): Extract OS type from device data
+        - extract_os_platform_type(): Extract OS and platform info from device data
         - get_credential_env_vars(): Return (username_env_var, password_env_var)
 
     Subclasses MAY override:
@@ -184,15 +184,16 @@ class BaseDeviceResolver(ABC):
             device_data: Raw device data from the data model.
 
         Returns:
-            Device dictionary with hostname, host, os, device_id fields.
-            Credentials are injected separately.
+            Device dictionary with hostname, host, os, device_id fields,
+            plus optional platform, model, series fields if provided by
+            extract_os_platform_type(). Credentials are injected separately.
 
         Raises:
             ValueError: If any required field extraction fails.
         """
         hostname = self.extract_hostname(device_data)
         host = self.extract_host_ip(device_data)
-        os_type = self.extract_os_type(device_data)
+        os_platform_info = self.extract_os_platform_type(device_data)
         device_id = self.extract_device_id(device_data)
 
         # Validate all extracted values are non-empty strings
@@ -209,17 +210,37 @@ class BaseDeviceResolver(ABC):
                 f"Invalid IP address format: '{host}'. "
                 "Ensure the field contains a valid IPv4 or IPv6 address."
             ) from None
+
+        # Validate os_platform_info structure
+        # Runtime check for dict type (defensive programming for non-mypy users)
+        if not isinstance(os_platform_info, dict):
+            type_name = type(os_platform_info).__name__  # type: ignore[unreachable]
+            raise ValueError(  # type: ignore[unreachable]
+                f"extract_os_platform_type must return a dict, got {type_name}"
+            )
+        if "os" not in os_platform_info:
+            raise ValueError("extract_os_platform_type must return dict with 'os' key")
+
+        os_type = os_platform_info["os"]
         if not isinstance(os_type, str) or not os_type:
             raise ValueError(f"Invalid OS type: {os_type!r}")
         if not isinstance(device_id, str) or not device_id:
             raise ValueError(f"Invalid device ID: {device_id!r}")
 
-        return {
+        # Build base device dict with required fields
+        device_dict = {
             "hostname": hostname,
             "host": host,
             "os": os_type,
             "device_id": device_id,
         }
+
+        # Add optional PyATS abstraction fields if present
+        for field in ["platform", "model", "series"]:
+            if field in os_platform_info:
+                device_dict[field] = os_platform_info[field]
+
+        return device_dict
 
     # -------------------------------------------------------------------------
     # Private helper methods
@@ -378,18 +399,29 @@ class BaseDeviceResolver(ABC):
         ...
 
     @abstractmethod
-    def extract_os_type(self, device_data: dict[str, Any]) -> str:
-        """Extract operating system type from device data.
+    def extract_os_platform_type(self, device_data: dict[str, Any]) -> dict[str, str]:
+        """Extract PyATS device abstraction fields from device data.
+
+        Returns a dictionary with device abstraction information for PyATS:
+        - os (required): Operating system type (e.g., "iosxe", "nxos")
+        - platform (optional): Device platform (e.g., "sdwan", "cat9k")
+        - model (optional): Device model (e.g., "c8000v", "c9300")
+        - series (optional): Device series (e.g., "catalyst", "nexus")
 
         Args:
             device_data: Device data dict from navigate_to_devices().
 
         Returns:
-            OS type string (e.g., "iosxe", "nxos", "iosxr").
+            Dictionary containing at minimum the 'os' key, with optional
+            'platform', 'model', and 'series' keys.
 
-        Example (SD-WAN):
-            >>> def extract_os_type(self, device_data):
-            ...     return device_data.get("os", "iosxe")
+        Example:
+            >>> def extract_os_platform_type(self, device_data):
+            ...     return {
+            ...         "os": "iosxe",
+            ...         "platform": "sdwan",
+            ...         "model": "c8000v"  # if extractable
+            ...     }
         """
         ...
 

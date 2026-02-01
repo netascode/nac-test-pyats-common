@@ -56,8 +56,8 @@ class IOSXEResolver(BaseDeviceResolver):
         """Extract management IP."""
         raise NotImplementedError("IOSXEResolver is not yet implemented")
 
-    def extract_os_type(self, device_data: dict[str, Any]) -> str:
-        """Extract OS type."""
+    def extract_os_platform_type(self, device_data: dict[str, Any]) -> dict[str, str]:
+        """Extract OS and platform info."""
         raise NotImplementedError("IOSXEResolver is not yet implemented")
 
     def get_credential_env_vars(self) -> tuple[str, str]:

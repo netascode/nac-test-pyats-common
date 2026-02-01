@@ -396,8 +396,8 @@ class TestCredentialInjection:
         devices = resolver.get_resolved_inventory()
 
         for device in devices:
-            assert device["username"] == "test_user"
-            assert device["password"] == "test_pass"
+            assert device["username"] == "%ENV{IOSXE_USERNAME}"
+            assert device["password"] == "%ENV{IOSXE_PASSWORD}"
 
     def test_error_when_username_env_var_missing(
         self,
@@ -455,8 +455,8 @@ class TestFullResolutionFlow:
         assert device1["platform"] == "sdwan"
         assert device1["device_id"] == "ABC123"
         assert device1["type"] == "router"
-        assert device1["username"] == "test_user"
-        assert device1["password"] == "test_pass"
+        assert device1["username"] == "%ENV{IOSXE_USERNAME}"
+        assert device1["password"] == "%ENV{IOSXE_PASSWORD}"
 
         # Verify device from second site
         device3 = next(d for d in devices if d["device_id"] == "GHI789")

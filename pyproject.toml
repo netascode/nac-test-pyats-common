@@ -145,3 +145,8 @@ exclude_lines = [
     "@abstract",
 ]
 omit = ["*/__main__.py"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
+]

@@ -14,6 +14,12 @@ The module implements a two-tier API design:
 
 This design ensures efficient session management by reusing valid sessions and only
 re-authenticating when necessary, reducing unnecessary API calls to the SDWAN Manager.
+
+Note on Fork Safety:
+    This module uses urllib instead of httpx for synchronous authentication requests.
+    httpx is NOT fork-safe on macOS - creating httpx.Client after fork() causes
+    silent crashes due to OpenSSL threading issues. urllib uses simpler primitives
+    that work correctly after fork().
 """
 
 import os

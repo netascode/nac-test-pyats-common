@@ -25,7 +25,6 @@ Note on Fork Safety:
 import os
 from typing import Any
 
-import httpx
 from nac_test.pyats_core.common.auth_cache import (
     AuthCache,  # type: ignore[import-untyped]
 )
@@ -83,6 +82,10 @@ class SDWANManagerAuth:
         3. Attempt to fetch XSRF token (for 19.2+ only)
         4. Return session data with TTL
 
+        Note: On macOS, SSL operations in forked processes crash due to OpenSSL
+        threading issues. This method uses subprocess with spawn context to perform
+        authentication in a fresh process, avoiding the fork+SSL crash.
+
         Args:
             url: Base URL of the SDWAN Manager (e.g., "https://sdwan-manager.example.com").
                 Should not include trailing slashes or API paths.
@@ -97,61 +100,196 @@ class SDWANManagerAuth:
                 - expires_in (int): Session lifetime in seconds (typically 1800).
 
         Raises:
-            httpx.HTTPStatusError: If SDWAN Manager returns a non-2xx status code,
-                typically indicating authentication failure (401) or server error.
-            httpx.RequestError: If the request fails due to network issues,
-                connection timeouts, or other transport-level problems.
-            ValueError: If the JSESSIONID cookie is not received in the response,
-                indicating a malformed or unexpected response.
+            RuntimeError: If authentication subprocess fails.
+            ValueError: If the authentication response is malformed.
 
         Note:
-            SSL verification is disabled (verify=False) to handle self-signed
-            certificates commonly used in lab and development deployments.
-            In production environments, proper certificate validation should be enabled
-            by either installing the certificate in the trust store or providing
-            a custom CA bundle via the verify parameter.
+            SSL verification is disabled to handle self-signed certificates commonly
+            used in lab and development deployments.
         """
-        # NOTE: SSL verification is disabled (verify=False) to handle self-signed
-        # certificates commonly used in lab and development deployments.
-        with httpx.Client(verify=False, timeout=AUTH_REQUEST_TIMEOUT_SECONDS) as client:
-            # Step 1: Form-based login to SDWAN Manager
-            auth_response = client.post(
-                f"{url}/j_security_check",
-                data={"j_username": username, "j_password": password},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                follow_redirects=False,
+        import json
+        import os
+        import shlex
+        import stat
+        import sys
+        import tempfile
+
+        # =============================================================================
+        # macOS Fork Safety: os.system() + temp files - NOT subprocess.run()
+        # =============================================================================
+        # CRITICAL: On macOS, after PyATS forks child processes:
+        #   - subprocess.run() crashes due to pipe creation issues after fork
+        #
+        # The ONLY reliable approach is os.system() which uses the system() syscall
+        # that doesn't create pipes. To exchange data, we use temp files.
+        # =============================================================================
+
+        # Create temp files for input/output (avoid pipes)
+        auth_params = {
+            "url": url,
+            "username": username,
+            "password": password,
+            "timeout": AUTH_REQUEST_TIMEOUT_SECONDS,
+        }
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix="_auth_in.json", delete=False
+        ) as f_in:
+            json.dump(auth_params, f_in)
+            input_path = f_in.name
+        # Restrict permissions since file contains credentials
+        os.chmod(input_path, stat.S_IRUSR | stat.S_IWUSR)
+
+        # Use NamedTemporaryFile instead of deprecated mktemp() to avoid race conditions
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix="_auth_out.json", delete=False
+        ) as f_out:
+            output_path = f_out.name
+        # Restrict permissions for output file (will contain session data)
+        os.chmod(output_path, stat.S_IRUSR | stat.S_IWUSR)
+
+        # Auth script that reads/writes via temp files (no pipes)
+        auth_script = f'''
+import http.cookiejar
+import json
+import ssl
+import urllib.parse
+import urllib.request
+
+# Read auth params from input file
+with open("{input_path}") as f:
+    params = json.load(f)
+
+url = params["url"]
+username = params["username"]
+password = params["password"]
+timeout = params["timeout"]
+
+try:
+    # Create SSL context with verification disabled
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    # Create cookie jar and opener
+    cookie_jar = http.cookiejar.CookieJar()
+    https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+    cookie_handler = urllib.request.HTTPCookieProcessor(cookie_jar)
+    opener = urllib.request.build_opener(https_handler, cookie_handler)
+
+    # Step 1: Form-based login
+    auth_data = urllib.parse.urlencode({{
+        "j_username": username,
+        "j_password": password
+    }}).encode("utf-8")
+
+    auth_request = urllib.request.Request(
+        f"{{url}}/j_security_check",
+        data=auth_data,
+        headers={{"Content-Type": "application/x-www-form-urlencoded"}},
+        method="POST"
+    )
+
+    try:
+        opener.open(auth_request, timeout=timeout)
+    except urllib.error.HTTPError as e:
+        if e.code != 302:  # 302 is expected
+            raise
+
+    # Extract JSESSIONID
+    jsessionid = None
+    for cookie in cookie_jar:
+        if cookie.name == "JSESSIONID":
+            jsessionid = cookie.value
+            break
+
+    if jsessionid is None:
+        result = {{"error": "No JSESSIONID cookie received"}}
+    else:
+        # Step 2: Get XSRF token (19.2+)
+        xsrf_token = None
+        try:
+            token_request = urllib.request.Request(
+                f"{{url}}/dataservice/client/token",
+                headers={{"Cookie": f"JSESSIONID={{jsessionid}}"}},
+                method="GET"
             )
-            auth_response.raise_for_status()
+            token_response = opener.open(token_request, timeout=10.0)
+            if token_response.status == 200:
+                xsrf_token = token_response.read().decode("utf-8").strip()
+        except Exception:
+            pass  # Pre-19.2 does not support XSRF tokens
 
-            # Validate JSESSIONID cookie was received
-            if "JSESSIONID" not in auth_response.cookies:
-                raise ValueError(
-                    "No JSESSIONID cookie received from SDWAN Manager. "
-                    "This may indicate invalid credentials or a server error. "
-                    f"Response status: {auth_response.status_code}"
+        result = {{"jsessionid": jsessionid, "xsrf_token": xsrf_token}}
+
+except Exception as e:
+    result = {{"error": str(e)}}
+
+# Write result to output file
+with open("{output_path}", "w") as f:
+    json.dump(result, f)
+'''
+
+        # Write the script to a temp file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False
+        ) as f_script:
+            f_script.write(auth_script)
+            script_path = f_script.name
+
+        try:
+            # Run via os.system() - the ONLY fork-safe method on macOS
+            # Use shlex.quote() to prevent shell injection
+            if os.name == "nt":
+                # Windows: use double quotes
+                cmd = f'"{sys.executable}" "{script_path}"'
+            else:
+                # Unix/macOS: use shlex.quote() for proper escaping
+                cmd = f"{shlex.quote(sys.executable)} {shlex.quote(script_path)}"
+            returncode = os.system(cmd)
+
+            # os.system() returns the exit status shifted on Unix
+            if os.name == "nt":
+                actual_returncode = returncode
+            else:
+                # On Unix, os.system() returns the result of waitpid() which encodes
+                # the exit status. os.waitstatus_to_exitcode() (Python 3.9+) handles
+                # all cases (normal exit, signal termination, etc.)
+                if hasattr(os, "waitstatus_to_exitcode"):
+                    actual_returncode = os.waitstatus_to_exitcode(returncode)
+                elif os.WIFEXITED(returncode):
+                    actual_returncode = os.WEXITSTATUS(returncode)
+                else:
+                    # Process was killed by signal or other abnormal termination
+                    actual_returncode = -1
+
+            if actual_returncode != 0:
+                raise RuntimeError(
+                    f"Auth subprocess failed with exit code {actual_returncode}"
                 )
 
-            jsessionid = auth_response.cookies["JSESSIONID"]
+            # Read result from output file
+            if not os.path.exists(output_path):
+                raise RuntimeError("Authentication subprocess did not produce output")
 
-            # Step 2: Attempt to get XSRF token (19.2+ only)
-            # Pre-19.2 versions do not require XSRF token, so failures are expected
-            xsrf_token: str | None = None
-            try:
-                token_response = client.get(
-                    f"{url}/dataservice/client/token",
-                    cookies={"JSESSIONID": jsessionid},
-                    timeout=XSRF_TOKEN_FETCH_TIMEOUT_SECONDS,
-                )
-                if token_response.status_code == 200:
-                    xsrf_token = token_response.text.strip()
-            except (httpx.HTTPError, httpx.TimeoutException):
-                # Pre-19.2 does not support XSRF tokens, continue without
-                pass
+            with open(output_path) as f:
+                auth_data = json.load(f)
 
-            return {
-                "jsessionid": jsessionid,
-                "xsrf_token": xsrf_token,
-            }, SDWAN_MANAGER_SESSION_LIFETIME_SECONDS
+        finally:
+            # Clean up temp files
+            for path in [input_path, output_path, script_path]:
+                try:
+                    os.unlink(path)
+                except (OSError, FileNotFoundError):
+                    pass  # Best effort cleanup
+
+        if "error" in auth_data:
+            raise RuntimeError(f"Authentication failed: {auth_data['error']}")
+
+        return {
+            "jsessionid": auth_data["jsessionid"],
+            "xsrf_token": auth_data.get("xsrf_token"),
+        }, SDWAN_MANAGER_SESSION_LIFETIME_SECONDS
 
     @classmethod
     def get_auth(cls) -> dict[str, Any]:

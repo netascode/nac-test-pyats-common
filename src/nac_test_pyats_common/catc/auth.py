@@ -25,8 +25,10 @@ Note on Fork Safety:
 import os
 from typing import Any
 
-from nac_test.pyats_core.common.auth_cache import (
-    AuthCache,  # type: ignore[import-untyped]
+from nac_test.pyats_core.common.auth_cache import AuthCache
+from nac_test.pyats_core.common.subprocess_auth import (
+    SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
+    execute_auth_subprocess,
 )
 
 # Default token lifetime for Catalyst Center authentication in seconds
@@ -99,8 +101,8 @@ class CatalystCenterAuth:
                 - expires_in (int): Token lifetime in seconds (typically 3600).
 
         Raises:
-            RuntimeError: If authentication subprocess fails or authentication fails
-                on all available endpoints.
+            SubprocessAuthError: If authentication subprocess fails or authentication
+                fails on all available endpoints.
             ValueError: If the authentication response is malformed.
 
         Note:
@@ -108,24 +110,7 @@ class CatalystCenterAuth:
             self-signed certificates commonly used in lab deployments. In production
             environments, proper certificate validation should be enabled.
         """
-        import json
-        import os
-        import shlex
-        import stat
-        import sys
-        import tempfile
-
-        # =============================================================================
-        # macOS Fork Safety: os.system() + temp files - NOT subprocess.run()
-        # =============================================================================
-        # CRITICAL: On macOS, after PyATS forks child processes:
-        #   - subprocess.run() crashes due to pipe creation issues after fork
-        #
-        # The ONLY reliable approach is os.system() which uses the system() syscall
-        # that doesn't create pipes. To exchange data, we use temp files.
-        # =============================================================================
-
-        # Create temp files for input/output (avoid pipes)
+        # Build auth parameters for subprocess
         auth_params = {
             "url": url,
             "username": username,
@@ -135,32 +120,14 @@ class CatalystCenterAuth:
             "endpoints": AUTH_ENDPOINTS,
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix="_auth_in.json", delete=False
-        ) as f_in:
-            json.dump(auth_params, f_in)
-            input_path = f_in.name
-        # Restrict permissions since file contains credentials
-        os.chmod(input_path, stat.S_IRUSR | stat.S_IWUSR)
-
-        # Use NamedTemporaryFile instead of deprecated mktemp() to avoid race conditions
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix="_auth_out.json", delete=False
-        ) as f_out:
-            output_path = f_out.name
-        # Restrict permissions for output file (will contain token)
-        os.chmod(output_path, stat.S_IRUSR | stat.S_IWUSR)
-
-        # Auth script that reads/writes via temp files (no pipes)
-        auth_script = f'''
+        # Catalyst Center-specific authentication logic
+        # This script assumes `params` dict is already loaded by execute_auth_subprocess
+        auth_script_body = """
 import base64
 import json
 import ssl
 import urllib.request
-
-# Read auth params from input file
-with open("{input_path}") as f:
-    params = json.load(f)
+import urllib.error
 
 url = params["url"]
 username = params["username"]
@@ -169,139 +136,75 @@ timeout = params["timeout"]
 verify_ssl = params["verify_ssl"]
 endpoints = params["endpoints"]
 
-try:
-    # Create SSL context
-    ssl_context = ssl.create_default_context()
-    if not verify_ssl:
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
+# Create SSL context
+ssl_context = ssl.create_default_context()
+if not verify_ssl:
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
 
-    # Create Basic Auth header
-    credentials = f"{{username}}:{{password}}"
-    b64_credentials = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
-    auth_header = f"Basic {{b64_credentials}}"
+# Create Basic Auth header
+credentials = f"{username}:{password}"
+b64_credentials = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
+auth_header = f"Basic {b64_credentials}"
 
-    # Create HTTPS handler with SSL context
-    https_handler = urllib.request.HTTPSHandler(context=ssl_context)
-    opener = urllib.request.build_opener(https_handler)
+# Create HTTPS handler with SSL context
+https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+opener = urllib.request.build_opener(https_handler)
 
-    last_error = None
-    result = None
+last_error = None
 
-    for endpoint in endpoints:
-        try:
-            # Create request with Basic Auth and proper headers
-            request = urllib.request.Request(
-                f"{{url}}{{endpoint}}",
-                data=None,
-                headers={{
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "Authorization": auth_header,
-                }},
-                method="POST"
+for endpoint in endpoints:
+    try:
+        # Create request with Basic Auth and proper headers
+        request = urllib.request.Request(
+            f"{url}{endpoint}",
+            data=None,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Authorization": auth_header,
+            },
+            method="POST"
+        )
+
+        # Execute authentication request
+        response = opener.open(request, timeout=timeout)
+        response_body = response.read().decode("utf-8")
+        response_data = json.loads(response_body)
+
+        # Extract token from response
+        token = response_data.get("Token")
+        if not token:
+            raise ValueError(
+                f"No 'Token' field in auth response from {endpoint}. "
+                f"Response keys: {list(response_data.keys())}"
             )
 
-            # Execute authentication request
-            response = opener.open(request, timeout=timeout)
-            response_body = response.read().decode("utf-8")
-            response_data = json.loads(response_body)
+        result = {"token": str(token)}
+        break  # Success - exit loop
 
-            # Extract token from response
-            token = response_data.get("Token")
-            if not token:
-                raise ValueError(
-                    f"No 'Token' field in auth response from {{endpoint}}. "
-                    f"Response keys: {{list(response_data.keys())}}"
-                )
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8") if e.fp else ""
+        err_snippet = error_body[:200]
+        last_error = (
+            f"HTTP {e.code} on {endpoint}: {e.reason}. {err_snippet}"
+        )
+        continue
+    except ValueError as e:
+        last_error = str(e)
+        continue
+    except Exception as e:
+        last_error = f"{endpoint}: {str(e)}"
+        continue
+else:
+    # Loop completed without break - all endpoints failed
+    result = {"error": f"All endpoints failed. Last error: {last_error}"}
+"""
 
-            result = {{"token": str(token)}}
-            break  # Success - exit loop
+        # Execute authentication in subprocess (fork-safe on macOS)
+        auth_result = execute_auth_subprocess(auth_params, auth_script_body)
 
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode("utf-8") if e.fp else ""
-            err_snippet = error_body[:200]
-            last_error = (
-                f"HTTP {{e.code}} on {{endpoint}}: {{e.reason}}. {{err_snippet}}"
-            )
-            continue
-        except ValueError as e:
-            last_error = str(e)
-            continue
-        except Exception as e:
-            last_error = f"{{endpoint}}: {{str(e)}}"
-            continue
-
-    if result is None:
-        result = {{"error": f"All endpoints failed. Last error: {{last_error}}"}}
-
-except Exception as e:
-    result = {{"error": str(e)}}
-
-# Write result to output file
-with open("{output_path}", "w") as f:
-    json.dump(result, f)
-'''
-
-        # Write the script to a temp file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f_script:
-            f_script.write(auth_script)
-            script_path = f_script.name
-
-        try:
-            # Run via os.system() - the ONLY fork-safe method on macOS
-            # Use shlex.quote() to prevent shell injection
-            if os.name == "nt":
-                # Windows: use double quotes
-                cmd = f'"{sys.executable}" "{script_path}"'
-            else:
-                # Unix/macOS: use shlex.quote() for proper escaping
-                cmd = f"{shlex.quote(sys.executable)} {shlex.quote(script_path)}"
-            returncode = os.system(cmd)
-
-            # os.system() returns the exit status shifted on Unix
-            if os.name == "nt":
-                actual_returncode = returncode
-            else:
-                # On Unix, os.system() returns the result of waitpid() which encodes
-                # the exit status. os.waitstatus_to_exitcode() (Python 3.9+) handles
-                # all cases (normal exit, signal termination, etc.)
-                if hasattr(os, "waitstatus_to_exitcode"):
-                    actual_returncode = os.waitstatus_to_exitcode(returncode)
-                elif os.WIFEXITED(returncode):
-                    actual_returncode = os.WEXITSTATUS(returncode)
-                else:
-                    # Process was killed by signal or other abnormal termination
-                    actual_returncode = -1
-
-            if actual_returncode != 0:
-                raise RuntimeError(
-                    f"Auth subprocess failed with exit code {actual_returncode}"
-                )
-
-            # Read result from output file
-            if not os.path.exists(output_path):
-                raise RuntimeError("Authentication subprocess did not produce output")
-
-            with open(output_path) as f:
-                auth_data = json.load(f)
-
-        finally:
-            # Clean up temp files
-            for path in [input_path, output_path, script_path]:
-                try:
-                    os.unlink(path)
-                except (OSError, FileNotFoundError):
-                    pass  # Best effort cleanup
-
-        if "error" in auth_data:
-            raise RuntimeError(
-                f"Catalyst Center authentication failed: {auth_data['error']}"
-            )
-
-        return {"token": auth_data["token"]}, CATALYST_CENTER_TOKEN_LIFETIME_SECONDS
+        return {"token": auth_result["token"]}, CATALYST_CENTER_TOKEN_LIFETIME_SECONDS
 
     @classmethod
     def get_auth(cls) -> dict[str, Any]:

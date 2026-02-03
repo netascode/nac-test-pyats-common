@@ -973,6 +973,58 @@ All auth classes follow a consistent two-tier pattern for separation of concerns
 - Efficient token reuse across parallel test execution
 - Process-safe file-based locking in AuthCache
 
+### Fork-Safe Subprocess Authentication
+
+All authentication modules use subprocess-based HTTP execution to avoid macOS fork+SSL crashes.
+
+**Problem**: On macOS, after PyATS uses `fork()` to create task subprocesses, SSL/TLS operations crash silently due to OpenSSL threading primitives that are not fork-safe. This affects `httpx`, `aiohttp`, and other HTTP libraries that use SSL.
+
+**Solution**: The `execute_auth_subprocess()` function from nac-test spawns a clean Python subprocess using `os.system()` with temp files:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│               Subprocess Authentication Flow                      │
+│                                                                   │
+│  1. Write auth_params to temp JSON file                          │
+│     ┌─────────────────────────────────────────────────────────┐ │
+│     │ /tmp/xxx_auth_input.json                                │ │
+│     │ {"url": "...", "username": "...", "password": "..."}    │ │
+│     └─────────────────────────────────────────────────────────┘ │
+│                           │                                       │
+│                           ▼                                       │
+│  2. Execute auth script in NEW Python interpreter (os.system)   │
+│     ┌─────────────────────────────────────────────────────────┐ │
+│     │ python3 /tmp/xxx_auth_script.py                         │ │
+│     │   - Reads params from input file                        │ │
+│     │   - Performs HTTP auth using urllib (no httpx)          │ │
+│     │   - Writes result to output file                        │ │
+│     └─────────────────────────────────────────────────────────┘ │
+│                           │                                       │
+│                           ▼                                       │
+│  3. Read result from temp JSON file                              │
+│     ┌─────────────────────────────────────────────────────────┐ │
+│     │ /tmp/xxx_auth_output.json                               │ │
+│     │ {"token": "...", "jsessionid": "..."}                   │ │
+│     └─────────────────────────────────────────────────────────┘ │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Why os.system() instead of subprocess.run()?**
+- `subprocess.run()` creates pipes using `os.pipe()`, which also crashes after fork on macOS
+- `os.system()` is the ONLY fork-safe method - it uses `exec()` without pipe creation
+
+**Platform Behavior**:
+| Platform | SSL Issue? | Auth Method |
+|----------|------------|-------------|
+| macOS    | Yes (fork+SSL crash) | Subprocess via os.system() |
+| Linux    | No | Subprocess (consistent behavior) |
+| Windows  | No (uses spawn, not fork) | Subprocess (consistent behavior) |
+
+**Error Handling**:
+- `SubprocessAuthError`: Raised when authentication subprocess fails
+- Re-exported from each auth module for convenient import by callers
+
 ### APICAuth Implementation
 
 ```python

@@ -70,7 +70,7 @@ class SDWANManagerAuth:
 
     @staticmethod
     def _authenticate(
-        url: str, username: str, password: str
+        url: str, username: str, password: str, verify_ssl: bool = False
     ) -> tuple[dict[str, Any], int]:
         """Perform direct SDWAN Manager authentication and obtain session data.
 
@@ -94,6 +94,9 @@ class SDWANManagerAuth:
             username: SDWAN Manager username for authentication. This should be a valid
                 user configured with appropriate permissions.
             password: Password for the specified user account.
+            verify_ssl: Whether to verify SSL certificates. Defaults to False to
+                handle self-signed certificates commonly used in lab and development
+                deployments.
 
         Returns:
             A tuple containing:
@@ -104,10 +107,6 @@ class SDWANManagerAuth:
         Raises:
             SubprocessAuthError: If authentication subprocess fails.
             ValueError: If the authentication response is malformed.
-
-        Note:
-            SSL verification is disabled to handle self-signed certificates commonly
-            used in lab and development deployments.
         """
         # Build auth parameters for subprocess
         auth_params = {
@@ -116,6 +115,7 @@ class SDWANManagerAuth:
             "password": password,
             "timeout": AUTH_REQUEST_TIMEOUT_SECONDS,
             "xsrf_timeout": XSRF_TOKEN_FETCH_TIMEOUT_SECONDS,
+            "verify_ssl": verify_ssl,
         }
 
         # SDWAN-specific authentication logic
@@ -131,11 +131,13 @@ username = params["username"]
 password = params["password"]
 timeout = params["timeout"]
 xsrf_timeout = params["xsrf_timeout"]
+verify_ssl = params["verify_ssl"]
 
-# Create SSL context with verification disabled (for lab/dev self-signed certs)
+# Create SSL context
 ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_NONE
+if not verify_ssl:
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
 
 # Create cookie jar and opener
 cookie_jar = http.cookiejar.CookieJar()
@@ -215,6 +217,8 @@ else:
             SDWAN_URL: Base URL of the SDWAN Manager
             SDWAN_USERNAME: SDWAN Manager username for authentication
             SDWAN_PASSWORD: SDWAN Manager password for authentication
+            SDWAN_INSECURE: If "True", "1", or "yes" (default: "True"), SSL certificate
+                verification is disabled. Set to "False" to enable SSL verification.
 
         Returns:
             A dictionary containing:
@@ -225,11 +229,10 @@ else:
         Raises:
             ValueError: If any required environment variables (SDWAN_URL,
                 SDWAN_USERNAME, SDWAN_PASSWORD) are not set.
-            httpx.HTTPStatusError: If SDWAN Manager returns a non-2xx status code during
-                authentication, typically indicating invalid credentials (401) or
-                server issues (5xx).
-            httpx.RequestError: If the request fails due to network issues,
-                connection timeouts, or other transport-level problems.
+            SubprocessAuthError: If authentication fails due to invalid credentials,
+                network issues, connection timeouts, or SDWAN Manager server errors.
+                The error message will contain details from the authentication
+                subprocess.
 
         Example:
             >>> # Set environment variables first
@@ -247,6 +250,11 @@ else:
         url = os.environ.get("SDWAN_URL")
         username = os.environ.get("SDWAN_USERNAME")
         password = os.environ.get("SDWAN_PASSWORD")
+        insecure = os.environ.get("SDWAN_INSECURE", "True").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
         if not all([url, username, password]):
             missing_vars: list[str] = []
@@ -263,9 +271,12 @@ else:
         # Normalize URL by removing trailing slash
         url = url.rstrip("/")  # type: ignore[union-attr]
 
+        # SDWAN_INSECURE=True means verify_ssl=False
+        verify_ssl = not insecure
+
         def auth_wrapper() -> tuple[dict[str, Any], int]:
             """Wrapper for authentication that captures closure variables."""
-            return cls._authenticate(url, username, password)  # type: ignore[arg-type]
+            return cls._authenticate(url, username, password, verify_ssl)  # type: ignore[arg-type]
 
         # AuthCache.get_or_create returns dict[str, Any], but mypy can't verify this
         # because nac_test lacks py.typed marker.

@@ -42,7 +42,8 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         auth_data (dict): Catalyst Center authentication data containing the
             token obtained during setup.
         client (httpx.AsyncClient | None): Wrapped async HTTP client configured for
-            Catalyst Center. Initialized to None, set during run_async_verification_test().
+            Catalyst Center. Initialized to None, set during
+            run_async_verification_test().
         controller_url (str): Base URL of the Catalyst Center controller.
         verify_ssl (bool): Whether SSL verification is enabled.
 

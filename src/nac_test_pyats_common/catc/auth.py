@@ -233,8 +233,10 @@ else:
         Raises:
             ValueError: If any required environment variables (CC_URL, CC_USERNAME,
                 CC_PASSWORD) are not set.
-            RuntimeError: If authentication fails on all available endpoints.
-            httpx.HTTPStatusError: If Catalyst Center returns authentication errors.
+            SubprocessAuthError: If authentication fails due to invalid credentials,
+                network issues, connection timeouts, or Catalyst Center server errors.
+                The error message will contain details from the authentication
+                subprocess.
 
         Example:
             >>> # Set environment variables first

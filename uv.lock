@@ -1956,6 +1956,7 @@ name = "nac-test-pyats-common"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "filelock" },
     { name = "httpx" },
     { name = "nac-test" },
 ]
@@ -1981,6 +1982,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bandit", extras = ["toml"], marker = "extra == 'dev'", specifier = ">=1.8.6" },
+    { name = "filelock", specifier = ">=3.20.1" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "nac-test", specifier = "==1.1.0b2" },

@@ -22,8 +22,11 @@ Note on Fork Safety:
     that work correctly after fork().
 """
 
+import os
+
 from nac_test.pyats_core.common.auth_cache import AuthCache
 from nac_test.pyats_core.common.subprocess_auth import (
+    SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
     execute_auth_subprocess,
 )
 
@@ -53,7 +56,9 @@ class APICAuth:
     """
 
     @staticmethod
-    def authenticate(url: str, username: str, password: str) -> tuple[str, int]:
+    def authenticate(
+        url: str, username: str, password: str, verify_ssl: bool = False
+    ) -> tuple[str, int]:
         """Perform direct APIC authentication and obtain a session token.
 
         This method performs a direct authentication request to the APIC controller
@@ -70,6 +75,8 @@ class APICAuth:
             username: APIC username for authentication. This should be a valid user
                 configured in the APIC with appropriate permissions.
             password: Password for the specified APIC user account.
+            verify_ssl: Whether to verify SSL certificates. Defaults to False for
+                backward compatibility with lab environments using self-signed certs.
 
         Returns:
             A tuple containing:
@@ -83,9 +90,9 @@ class APICAuth:
                 structure that cannot be properly parsed.
 
         Note:
-            SSL verification is disabled to handle self-signed certificates commonly
-            used in lab and development APIC deployments. In production environments,
-            proper certificate validation should be enabled.
+            SSL verification defaults to disabled to handle self-signed certificates
+            commonly used in lab and development APIC deployments. Set verify_ssl=True
+            for production environments with proper certificate validation.
         """
         # Build auth parameters for subprocess
         auth_params = {
@@ -93,6 +100,7 @@ class APICAuth:
             "username": username,
             "password": password,
             "timeout": AUTH_REQUEST_TIMEOUT_SECONDS,
+            "verify_ssl": verify_ssl,
         }
 
         # APIC-specific authentication logic
@@ -107,12 +115,14 @@ url = params["url"]
 username = params["username"]
 password = params["password"]
 timeout = params["timeout"]
+verify_ssl = params["verify_ssl"]
 
 try:
-    # Create SSL context with verification disabled
+    # Create SSL context
     ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
+    if not verify_ssl:
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
 
     # Build JSON payload for APIC authentication
     payload = json.dumps({
@@ -166,7 +176,9 @@ except Exception as e:
         return auth_data["token"], APIC_TOKEN_LIFETIME_SECONDS
 
     @classmethod
-    def get_token(cls, url: str, username: str, password: str) -> str:
+    def get_token(
+        cls, url: str, username: str, password: str, verify_ssl: bool = False
+    ) -> str:
         """Get APIC token with automatic caching and renewal.
 
         This is the primary method that consumers should use to obtain APIC tokens.
@@ -184,6 +196,8 @@ except Exception as e:
             username: APIC username for authentication. This should be a valid user
                 configured in the APIC with appropriate permissions.
             password: Password for the specified APIC user account.
+            verify_ssl: Whether to verify SSL certificates. Defaults to False for
+                backward compatibility with lab environments using self-signed certs.
 
         Returns:
             A valid APIC session token that can be used in API requests.
@@ -191,13 +205,9 @@ except Exception as e:
             API calls to the APIC controller.
 
         Raises:
-            httpx.HTTPStatusError: If the APIC returns a non-2xx status code during
-                authentication, typically indicating invalid credentials (401) or
-                server issues (5xx).
-            httpx.RequestError: If the request fails due to network issues,
-                connection timeouts, or other transport-level problems.
-            ValueError: If the APIC response contains malformed or unexpected JSON
-                structure that cannot be properly parsed.
+            SubprocessAuthError: If authentication fails due to invalid credentials,
+                network issues, connection timeouts, or APIC server errors. The error
+                message will contain details from the authentication subprocess.
 
         Examples:
             >>> # Get a token for APIC access
@@ -217,5 +227,61 @@ except Exception as e:
             url=url,
             username=username,
             password=password,
-            auth_func=cls.authenticate,
+            auth_func=lambda u, un, pw: cls.authenticate(u, un, pw, verify_ssl),
         )
+
+    @classmethod
+    def get_auth(cls) -> str:
+        """Get APIC token with automatic caching, using environment variables.
+
+        This is the primary method that consumers should use to obtain APIC tokens
+        when using environment variable configuration. It leverages the AuthCache
+        to efficiently manage token lifecycle.
+
+        Environment Variables Required:
+            APIC_URL: Base URL of the APIC controller
+            APIC_USERNAME: APIC username for authentication
+            APIC_PASSWORD: APIC password for authentication
+            APIC_INSECURE: Optional. Set to "True" to disable SSL verification
+                (default: True for backward compatibility)
+
+        Returns:
+            A valid APIC session token.
+
+        Raises:
+            ValueError: If required environment variables are not set.
+        """
+        url = os.environ.get("APIC_URL")
+        username = os.environ.get("APIC_USERNAME")
+        password = os.environ.get("APIC_PASSWORD")
+        insecure = os.environ.get("APIC_INSECURE", "True").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+
+        # Validate environment variables and collect missing ones
+        missing_vars: list[str] = []
+        if not url:
+            missing_vars.append("APIC_URL")
+        if not username:
+            missing_vars.append("APIC_USERNAME")
+        if not password:
+            missing_vars.append("APIC_PASSWORD")
+
+        if missing_vars:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing_vars)}"
+            )
+
+        # Type narrowing: url, username, password are guaranteed to be str
+        # We raised ValueError above if any were None/empty
+        assert url is not None
+        assert username is not None
+        assert password is not None
+
+        # Normalize URL by removing trailing slash
+        url = url.rstrip("/")
+        verify_ssl = not insecure  # APIC_INSECURE=True means verify=False
+
+        return cls.get_token(url, username, password, verify_ssl)

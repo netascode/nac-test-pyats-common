@@ -3,22 +3,11 @@
 
 """Unit tests for APICAuth.
 
-This module tests actual business logic for APIC authentication:
+Tests APIC authentication:
 1. Error propagation from subprocess execution
 2. Environment variable validation (missing credentials)
 3. URL normalization (trailing slash handling)
 4. SSL/insecure flag handling
-
-NOTE: The following tests were removed as they only verified mocks return mocked values:
-- test_successful_authentication (mock_exec.return_value = {"token": "x"} -> assert token == "x")
-- test_authentication_with_ssl_verification (same pattern)
-- test_authentication_passes_auth_script (only checks mock was called)
-- test_credentials_sent_correctly (only checks mock was called with args)
-- test_default_verify_ssl_is_false (only checks mock was called with args)
-- test_get_token_success (mock returns mock)
-- test_auth_func_wrapper_calls_authenticate (mock setup, verify mock called)
-- test_get_token_passes_verify_ssl_to_auth_func (mock verification)
-- TestConstants class (tests that 600 == 600)
 """
 
 from unittest.mock import MagicMock, patch
@@ -29,7 +18,7 @@ from nac_test_pyats_common.aci.auth import APICAuth
 
 
 class TestAuthenticateErrorHandling:
-    """Test error handling in authenticate method - actual business logic."""
+    """Test error handling in authenticate method."""
 
     @patch("nac_test_pyats_common.aci.auth.execute_auth_subprocess")
     def test_subprocess_error_propagates(self, mock_exec: MagicMock) -> None:
@@ -47,7 +36,7 @@ class TestAuthenticateErrorHandling:
 
 
 class TestGetAuthEnvironmentValidation:
-    """Test environment variable validation - actual business logic."""
+    """Test environment variable validation."""
 
     def test_get_auth_missing_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when APIC_URL is missing."""

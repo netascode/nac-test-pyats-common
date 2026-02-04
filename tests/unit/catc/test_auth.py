@@ -3,21 +3,10 @@
 
 """Unit tests for CatalystCenterAuth.
 
-This module tests actual business logic for Catalyst Center authentication:
+Tests Catalyst Center authentication:
 1. Error propagation from subprocess execution
 2. Environment variable validation (missing credentials)
 3. URL normalization (trailing slash handling)
-
-NOTE: The following tests were removed as they only verified mocks return mocked values:
-- test_successful_authentication (mock_exec.return_value = {"token": "x"} -> assert token == "x")
-- test_authentication_with_ssl_verification (same pattern)
-- test_authentication_passes_auth_script (only checks mock was called)
-- test_credentials_sent_correctly (only checks mock was called with args)
-- test_get_auth_success (mock returns mock)
-- test_get_auth_insecure_default_true (only verifies callable exists)
-- test_get_auth_insecure_variations (only checks mock was called)
-- test_auth_func_wrapper_calls_authenticate (mock setup, verify mock called)
-- TestConstants class (tests that 3600 == 3600, and that endpoint list has 2 items)
 """
 
 from unittest.mock import MagicMock, patch
@@ -28,7 +17,7 @@ from nac_test_pyats_common.catc.auth import CatalystCenterAuth
 
 
 class TestAuthenticateErrorHandling:
-    """Test error handling in _authenticate method - actual business logic."""
+    """Test error handling in _authenticate method."""
 
     @patch("nac_test_pyats_common.catc.auth.execute_auth_subprocess")
     def test_subprocess_error_propagates(self, mock_exec: MagicMock) -> None:
@@ -51,7 +40,7 @@ class TestAuthenticateErrorHandling:
 
 
 class TestGetAuthEnvironmentValidation:
-    """Test environment variable validation - actual business logic."""
+    """Test environment variable validation."""
 
     def test_get_auth_missing_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when CC_URL is missing."""

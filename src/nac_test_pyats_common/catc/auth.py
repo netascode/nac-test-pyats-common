@@ -14,14 +14,21 @@ The module implements a two-tier API design:
 
 This design ensures efficient token management by reusing valid tokens and only
 re-authenticating when necessary, reducing unnecessary API calls to the controller.
+
+Note on Fork Safety:
+    This module uses urllib instead of httpx for synchronous authentication requests.
+    httpx is NOT fork-safe on macOS - creating httpx.Client after fork() causes
+    silent crashes due to OpenSSL threading issues. urllib uses simpler primitives
+    that work correctly after fork().
 """
 
 import os
 from typing import Any
 
-import httpx
-from nac_test.pyats_core.common.auth_cache import (
-    AuthCache,  # type: ignore[import-untyped]
+from nac_test.pyats_core.common.auth_cache import AuthCache
+from nac_test.pyats_core.common.subprocess_auth import (
+    SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
+    execute_auth_subprocess,
 )
 
 # Default token lifetime for Catalyst Center authentication in seconds
@@ -74,6 +81,10 @@ class CatalystCenterAuth:
         using Basic Auth. It tries the modern auth endpoint first, then falls back
         to the legacy endpoint if needed for backward compatibility.
 
+        Note: On macOS, SSL operations in forked processes crash due to OpenSSL
+        threading issues. This method uses subprocess with spawn context to perform
+        authentication in a fresh process, avoiding the fork+SSL crash.
+
         Args:
             url: Base URL of the Catalyst Center (e.g., "https://catc.example.com").
                 Should not include trailing slashes or API paths.
@@ -90,56 +101,110 @@ class CatalystCenterAuth:
                 - expires_in (int): Token lifetime in seconds (typically 3600).
 
         Raises:
-            httpx.HTTPStatusError: If Catalyst Center returns a non-2xx status code
-                on all auth endpoints, typically indicating authentication failure.
-            RuntimeError: If authentication fails on all available endpoints.
-            ValueError: If the token is not received in the response from any endpoint.
+            SubprocessAuthError: If authentication subprocess fails or authentication
+                fails on all available endpoints.
+            ValueError: If the authentication response is malformed.
 
         Note:
             SSL verification can be disabled via the verify_ssl parameter to handle
             self-signed certificates commonly used in lab deployments. In production
             environments, proper certificate validation should be enabled.
         """
-        last_error: Exception | None = None
+        # Build auth parameters for subprocess
+        auth_params = {
+            "url": url,
+            "username": username,
+            "password": password,
+            "timeout": AUTH_REQUEST_TIMEOUT_SECONDS,
+            "verify_ssl": verify_ssl,
+            "endpoints": AUTH_ENDPOINTS,
+        }
 
-        with httpx.Client(
-            verify=verify_ssl, timeout=AUTH_REQUEST_TIMEOUT_SECONDS
-        ) as client:
-            for endpoint in AUTH_ENDPOINTS:
-                try:
-                    auth_response = client.post(
-                        f"{url}{endpoint}",
-                        auth=(username, password),
-                        headers={
-                            "Content-Type": "application/json",
-                            "Accept": "application/json",
-                        },
-                    )
-                    auth_response.raise_for_status()
+        # Catalyst Center-specific authentication logic
+        # This script assumes `params` dict is already loaded by execute_auth_subprocess
+        auth_script_body = """
+import base64
+import json
+import ssl
+import urllib.request
+import urllib.error
 
-                    # Extract token from response
-                    response_data = auth_response.json()
-                    token = response_data.get("Token")
+url = params["url"]
+username = params["username"]
+password = params["password"]
+timeout = params["timeout"]
+verify_ssl = params["verify_ssl"]
+endpoints = params["endpoints"]
 
-                    if not token:
-                        raise ValueError(
-                            f"No 'Token' field in auth response from {endpoint}. "
-                            f"Response keys: {list(response_data.keys())}"
-                        )
+# Create SSL context
+ssl_context = ssl.create_default_context()
+if not verify_ssl:
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
 
-                    # Return auth data with token lifetime
-                    return {"token": str(token)}, CATALYST_CENTER_TOKEN_LIFETIME_SECONDS
+# Create Basic Auth header
+credentials = f"{username}:{password}"
+b64_credentials = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
+auth_header = f"Basic {b64_credentials}"
 
-                except (httpx.HTTPError, ValueError) as e:
-                    last_error = e
-                    # Try next endpoint
-                    continue
+# Create HTTPS handler with SSL context
+https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+opener = urllib.request.build_opener(https_handler)
 
-            # All endpoints failed
-            raise RuntimeError(
-                f"Catalyst Center authentication failed on all endpoints. "
-                f"Last error: {last_error}"
-            ) from last_error
+last_error = None
+
+for endpoint in endpoints:
+    try:
+        # Create request with Basic Auth and proper headers
+        request = urllib.request.Request(
+            f"{url}{endpoint}",
+            data=None,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Authorization": auth_header,
+            },
+            method="POST"
+        )
+
+        # Execute authentication request
+        response = opener.open(request, timeout=timeout)
+        response_body = response.read().decode("utf-8")
+        response_data = json.loads(response_body)
+
+        # Extract token from response
+        token = response_data.get("Token")
+        if not token:
+            raise ValueError(
+                f"No 'Token' field in auth response from {endpoint}. "
+                f"Response keys: {list(response_data.keys())}"
+            )
+
+        result = {"token": str(token)}
+        break  # Success - exit loop
+
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8") if e.fp else ""
+        err_snippet = error_body[:200]
+        last_error = (
+            f"HTTP {e.code} on {endpoint}: {e.reason}. {err_snippet}"
+        )
+        continue
+    except ValueError as e:
+        last_error = str(e)
+        continue
+    except Exception as e:
+        last_error = f"{endpoint}: {str(e)}"
+        continue
+else:
+    # Loop completed without break - all endpoints failed
+    result = {"error": f"All endpoints failed. Last error: {last_error}"}
+"""
+
+        # Execute authentication in subprocess (fork-safe on macOS)
+        auth_result = execute_auth_subprocess(auth_params, auth_script_body)
+
+        return {"token": auth_result["token"]}, CATALYST_CENTER_TOKEN_LIFETIME_SECONDS
 
     @classmethod
     def get_auth(cls) -> dict[str, Any]:
@@ -168,8 +233,10 @@ class CatalystCenterAuth:
         Raises:
             ValueError: If any required environment variables (CC_URL, CC_USERNAME,
                 CC_PASSWORD) are not set.
-            RuntimeError: If authentication fails on all available endpoints.
-            httpx.HTTPStatusError: If Catalyst Center returns authentication errors.
+            SubprocessAuthError: If authentication fails due to invalid credentials,
+                network issues, connection timeouts, or Catalyst Center server errors.
+                The error message will contain details from the authentication
+                subprocess.
 
         Example:
             >>> # Set environment variables first

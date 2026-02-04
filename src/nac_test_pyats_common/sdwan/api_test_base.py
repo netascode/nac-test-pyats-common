@@ -68,6 +68,7 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
     """
 
     client: httpx.AsyncClient | None = None  # MUST declare at class level
+    auth_data: dict[str, Any]  # Declared at class level for type checker compatibility
 
     @aetest.setup  # type: ignore[misc, untyped-decorator]
     def setup(self) -> None:
@@ -77,7 +78,11 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         1. Calling the parent class setup method
         2. Obtaining SDWAN Manager session data (jsessionid, xsrf_token) using
            cached auth
-        3. Creating and storing an SDWAN Manager client for use in verification methods
+
+        Note: Client creation is deferred to run_async_verification_test() to avoid
+        macOS fork() issues with httpx/SSL. Creating httpx.AsyncClient in a forked
+        process before entering an async context can cause crashes on macOS due to
+        OpenSSL threading primitives that are not fork-safe.
 
         The session data is obtained through the SDWANManagerAuth utility which
         manages session lifecycle and prevents duplicate authentication requests
@@ -86,10 +91,18 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         super().setup()
 
         # Get shared SDWAN Manager auth data (jsessionid, xsrf_token)
-        self.auth_data = SDWANManagerAuth.get_auth()
+        # This reads from file cache - no httpx client creation here
+        try:
+            self.auth_data = SDWANManagerAuth.get_auth()
+        except (RuntimeError, ValueError) as e:
+            # Convert auth failures to FAILED (not ERRORED) - auth issues are
+            # expected failure conditions, not infrastructure errors
+            self.auth_data = {}  # Ensure attribute exists for cleanup code
+            self.failed(f"Authentication failed: {e}")
+            return
 
-        # Store the SDWAN Manager client for use in verification methods
-        self.client = self.get_sdwan_manager_client()
+        # NOTE: Client creation is deferred to run_async_verification_test()
+        # to avoid macOS fork() + httpx/SSL crash issues
 
     def get_sdwan_manager_client(self) -> httpx.AsyncClient:
         """Get an httpx async client configured for SDWAN Manager.
@@ -141,9 +154,10 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         Simple entry point that uses base class orchestration to run async
         verification tests. This thin wrapper:
         1. Creates and manages an event loop for async operations
-        2. Calls NACTestBase.run_verification_async() to execute tests
-        3. Passes results to NACTestBase.process_results_smart() for reporting
-        4. Ensures proper cleanup of async resources
+        2. Creates the SDWAN Manager client (deferred from setup for fork safety)
+        3. Calls NACTestBase.run_verification_async() to execute tests
+        4. Passes results to NACTestBase.process_results_smart() for reporting
+        5. Ensures proper cleanup of async resources
 
         The actual verification logic is handled by:
         - get_items_to_verify() - must be implemented by the test class
@@ -158,10 +172,17 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
             This method creates its own event loop to ensure compatibility
             with PyATS synchronous test execution model. The loop and client
             connections are properly closed after test completion.
+
+            Client creation is done HERE (not in setup) to avoid macOS fork()
+            issues with httpx/SSL. Creating httpx.AsyncClient after fork() but
+            before entering an async context can crash on macOS.
         """
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
+            # Create client INSIDE the event loop context to avoid macOS fork+SSL crash
+            self.client = self.get_sdwan_manager_client()
+
             # Call the base class generic orchestration
             results = loop.run_until_complete(self.run_verification_async())
 

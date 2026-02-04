@@ -14,14 +14,21 @@ The module implements a two-tier API design:
 
 This design ensures efficient session management by reusing valid sessions and only
 re-authenticating when necessary, reducing unnecessary API calls to the SDWAN Manager.
+
+Note on Fork Safety:
+    This module uses urllib instead of httpx for synchronous authentication requests.
+    httpx is NOT fork-safe on macOS - creating httpx.Client after fork() causes
+    silent crashes due to OpenSSL threading issues. urllib uses simpler primitives
+    that work correctly after fork().
 """
 
 import os
 from typing import Any
 
-import httpx
-from nac_test.pyats_core.common.auth_cache import (
-    AuthCache,  # type: ignore[import-untyped]
+from nac_test.pyats_core.common.auth_cache import AuthCache
+from nac_test.pyats_core.common.subprocess_auth import (
+    SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
+    execute_auth_subprocess,
 )
 
 # Default session lifetime for SDWAN Manager authentication in seconds
@@ -63,7 +70,7 @@ class SDWANManagerAuth:
 
     @staticmethod
     def _authenticate(
-        url: str, username: str, password: str
+        url: str, username: str, password: str, verify_ssl: bool = False
     ) -> tuple[dict[str, Any], int]:
         """Perform direct SDWAN Manager authentication and obtain session data.
 
@@ -77,12 +84,19 @@ class SDWANManagerAuth:
         3. Attempt to fetch XSRF token (for 19.2+ only)
         4. Return session data with TTL
 
+        Note: On macOS, SSL operations in forked processes crash due to OpenSSL
+        threading issues. This method uses subprocess with spawn context to perform
+        authentication in a fresh process, avoiding the fork+SSL crash.
+
         Args:
             url: Base URL of the SDWAN Manager (e.g., "https://sdwan-manager.example.com").
                 Should not include trailing slashes or API paths.
             username: SDWAN Manager username for authentication. This should be a valid
                 user configured with appropriate permissions.
             password: Password for the specified user account.
+            verify_ssl: Whether to verify SSL certificates. Defaults to False to
+                handle self-signed certificates commonly used in lab and development
+                deployments.
 
         Returns:
             A tuple containing:
@@ -91,61 +105,99 @@ class SDWANManagerAuth:
                 - expires_in (int): Session lifetime in seconds (typically 1800).
 
         Raises:
-            httpx.HTTPStatusError: If SDWAN Manager returns a non-2xx status code,
-                typically indicating authentication failure (401) or server error.
-            httpx.RequestError: If the request fails due to network issues,
-                connection timeouts, or other transport-level problems.
-            ValueError: If the JSESSIONID cookie is not received in the response,
-                indicating a malformed or unexpected response.
-
-        Note:
-            SSL verification is disabled (verify=False) to handle self-signed
-            certificates commonly used in lab and development deployments.
-            In production environments, proper certificate validation should be enabled
-            by either installing the certificate in the trust store or providing
-            a custom CA bundle via the verify parameter.
+            SubprocessAuthError: If authentication subprocess fails.
+            ValueError: If the authentication response is malformed.
         """
-        # NOTE: SSL verification is disabled (verify=False) to handle self-signed
-        # certificates commonly used in lab and development deployments.
-        with httpx.Client(verify=False, timeout=AUTH_REQUEST_TIMEOUT_SECONDS) as client:
-            # Step 1: Form-based login to SDWAN Manager
-            auth_response = client.post(
-                f"{url}/j_security_check",
-                data={"j_username": username, "j_password": password},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                follow_redirects=False,
-            )
-            auth_response.raise_for_status()
+        # Build auth parameters for subprocess
+        auth_params = {
+            "url": url,
+            "username": username,
+            "password": password,
+            "timeout": AUTH_REQUEST_TIMEOUT_SECONDS,
+            "xsrf_timeout": XSRF_TOKEN_FETCH_TIMEOUT_SECONDS,
+            "verify_ssl": verify_ssl,
+        }
 
-            # Validate JSESSIONID cookie was received
-            if "JSESSIONID" not in auth_response.cookies:
-                raise ValueError(
-                    "No JSESSIONID cookie received from SDWAN Manager. "
-                    "This may indicate invalid credentials or a server error. "
-                    f"Response status: {auth_response.status_code}"
-                )
+        # SDWAN-specific authentication logic
+        # This script assumes `params` dict is already loaded by execute_auth_subprocess
+        auth_script_body = """
+import http.cookiejar
+import ssl
+import urllib.parse
+import urllib.request
 
-            jsessionid = auth_response.cookies["JSESSIONID"]
+url = params["url"]
+username = params["username"]
+password = params["password"]
+timeout = params["timeout"]
+xsrf_timeout = params["xsrf_timeout"]
+verify_ssl = params["verify_ssl"]
 
-            # Step 2: Attempt to get XSRF token (19.2+ only)
-            # Pre-19.2 versions do not require XSRF token, so failures are expected
-            xsrf_token: str | None = None
-            try:
-                token_response = client.get(
-                    f"{url}/dataservice/client/token",
-                    cookies={"JSESSIONID": jsessionid},
-                    timeout=XSRF_TOKEN_FETCH_TIMEOUT_SECONDS,
-                )
-                if token_response.status_code == 200:
-                    xsrf_token = token_response.text.strip()
-            except (httpx.HTTPError, httpx.TimeoutException):
-                # Pre-19.2 does not support XSRF tokens, continue without
-                pass
+# Create SSL context
+ssl_context = ssl.create_default_context()
+if not verify_ssl:
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
 
-            return {
-                "jsessionid": jsessionid,
-                "xsrf_token": xsrf_token,
-            }, SDWAN_MANAGER_SESSION_LIFETIME_SECONDS
+# Create cookie jar and opener
+cookie_jar = http.cookiejar.CookieJar()
+https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+cookie_handler = urllib.request.HTTPCookieProcessor(cookie_jar)
+opener = urllib.request.build_opener(https_handler, cookie_handler)
+
+# Step 1: Form-based login to /j_security_check
+auth_data = urllib.parse.urlencode({
+    "j_username": username,
+    "j_password": password
+}).encode("utf-8")
+
+auth_request = urllib.request.Request(
+    f"{url}/j_security_check",
+    data=auth_data,
+    headers={"Content-Type": "application/x-www-form-urlencoded"},
+    method="POST"
+)
+
+try:
+    opener.open(auth_request, timeout=timeout)
+except urllib.error.HTTPError as e:
+    if e.code != 302:  # 302 redirect is expected on successful login
+        raise
+
+# Extract JSESSIONID from cookies
+jsessionid = None
+for cookie in cookie_jar:
+    if cookie.name == "JSESSIONID":
+        jsessionid = cookie.value
+        break
+
+if jsessionid is None:
+    result = {"error": "No JSESSIONID cookie received - authentication may have failed"}
+else:
+    # Step 2: Fetch XSRF token (required for SDWAN Manager 19.2+)
+    xsrf_token = None
+    try:
+        token_request = urllib.request.Request(
+            f"{url}/dataservice/client/token",
+            headers={"Cookie": f"JSESSIONID={jsessionid}"},
+            method="GET"
+        )
+        token_response = opener.open(token_request, timeout=xsrf_timeout)
+        if token_response.status == 200:
+            xsrf_token = token_response.read().decode("utf-8").strip()
+    except Exception:
+        pass  # Pre-19.2 versions do not support XSRF tokens
+
+    result = {"jsessionid": jsessionid, "xsrf_token": xsrf_token}
+"""
+
+        # Execute authentication in subprocess (fork-safe on macOS)
+        auth_result = execute_auth_subprocess(auth_params, auth_script_body)
+
+        return {
+            "jsessionid": auth_result["jsessionid"],
+            "xsrf_token": auth_result.get("xsrf_token"),
+        }, SDWAN_MANAGER_SESSION_LIFETIME_SECONDS
 
     @classmethod
     def get_auth(cls) -> dict[str, Any]:
@@ -165,6 +217,8 @@ class SDWANManagerAuth:
             SDWAN_URL: Base URL of the SDWAN Manager
             SDWAN_USERNAME: SDWAN Manager username for authentication
             SDWAN_PASSWORD: SDWAN Manager password for authentication
+            SDWAN_INSECURE: If "True", "1", or "yes" (default: "True"), SSL certificate
+                verification is disabled. Set to "False" to enable SSL verification.
 
         Returns:
             A dictionary containing:
@@ -175,11 +229,10 @@ class SDWANManagerAuth:
         Raises:
             ValueError: If any required environment variables (SDWAN_URL,
                 SDWAN_USERNAME, SDWAN_PASSWORD) are not set.
-            httpx.HTTPStatusError: If SDWAN Manager returns a non-2xx status code during
-                authentication, typically indicating invalid credentials (401) or
-                server issues (5xx).
-            httpx.RequestError: If the request fails due to network issues,
-                connection timeouts, or other transport-level problems.
+            SubprocessAuthError: If authentication fails due to invalid credentials,
+                network issues, connection timeouts, or SDWAN Manager server errors.
+                The error message will contain details from the authentication
+                subprocess.
 
         Example:
             >>> # Set environment variables first
@@ -197,6 +250,11 @@ class SDWANManagerAuth:
         url = os.environ.get("SDWAN_URL")
         username = os.environ.get("SDWAN_USERNAME")
         password = os.environ.get("SDWAN_PASSWORD")
+        insecure = os.environ.get("SDWAN_INSECURE", "True").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
         if not all([url, username, password]):
             missing_vars: list[str] = []
@@ -213,9 +271,12 @@ class SDWANManagerAuth:
         # Normalize URL by removing trailing slash
         url = url.rstrip("/")  # type: ignore[union-attr]
 
+        # SDWAN_INSECURE=True means verify_ssl=False
+        verify_ssl = not insecure
+
         def auth_wrapper() -> tuple[dict[str, Any], int]:
             """Wrapper for authentication that captures closure variables."""
-            return cls._authenticate(url, username, password)  # type: ignore[arg-type]
+            return cls._authenticate(url, username, password, verify_ssl)  # type: ignore[arg-type]
 
         # AuthCache.get_or_create returns dict[str, Any], but mypy can't verify this
         # because nac_test lacks py.typed marker.

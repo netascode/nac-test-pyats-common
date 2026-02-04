@@ -34,15 +34,16 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
     response capture. It serves as the foundation for all Catalyst Center-specific
     API test classes.
 
-    The class follows the same pattern as APICTestBase and VManageTestBase for
+    The class follows the same pattern as APICTestBase and SDWANManagerTestBase for
     consistency across NAC architecture adapters. Token refresh is handled
     automatically by the AuthCache TTL mechanism.
 
     Attributes:
         auth_data (dict): Catalyst Center authentication data containing the
             token obtained during setup.
-        client (httpx.AsyncClient): Wrapped async HTTP client configured for
-            Catalyst Center.
+        client (httpx.AsyncClient | None): Wrapped async HTTP client configured for
+            Catalyst Center. Initialized to None, set during
+            run_async_verification_test().
         controller_url (str): Base URL of the Catalyst Center controller.
         verify_ssl (bool): Whether SSL verification is enabled.
 
@@ -67,6 +68,9 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
                 self.run_async_verification_test(steps)
     """
 
+    client: httpx.AsyncClient | None = None  # MUST declare at class level
+    auth_data: dict[str, Any]  # Declared at class level for type checker compatibility
+
     @aetest.setup  # type: ignore[misc, untyped-decorator]
     def setup(self) -> None:
         """Setup method that extends the generic base class setup.
@@ -75,7 +79,11 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         1. Calling the parent class setup method
         2. Obtaining Catalyst Center authentication token using cached auth
         3. Configuring SSL verification from environment
-        4. Creating and storing a Catalyst Center client for use in verification methods
+
+        Note: Client creation is deferred to run_async_verification_test() to avoid
+        macOS fork() issues with httpx/SSL. Creating httpx.AsyncClient in a forked
+        process before entering an async context can cause crashes on macOS due to
+        OpenSSL threading primitives that are not fork-safe.
 
         The authentication token is obtained through the CatalystCenterAuth utility
         which manages token lifecycle and prevents duplicate authentication requests
@@ -84,7 +92,15 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         super().setup()
 
         # Get Catalyst Center auth data (token)
-        self.auth_data = CatalystCenterAuth.get_auth()
+        # This reads from file cache - no httpx client creation here
+        try:
+            self.auth_data = CatalystCenterAuth.get_auth()
+        except (RuntimeError, ValueError) as e:
+            # Convert auth failures to FAILED (not ERRORED) - auth issues are
+            # expected failure conditions, not infrastructure errors
+            self.auth_data = {}  # Ensure attribute exists for cleanup code
+            self.failed(f"Authentication failed: {e}")
+            return
 
         # Get controller URL from environment
         self.controller_url = os.environ.get("CC_URL", "").rstrip("/")
@@ -93,8 +109,8 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         insecure = os.environ.get("CC_INSECURE", "True").lower() in ("true", "1", "yes")
         self.verify_ssl = not insecure
 
-        # Store the Catalyst Center client for use in verification methods
-        self.client = self.get_catc_client()
+        # NOTE: Client creation is deferred to run_async_verification_test()
+        # to avoid macOS fork() + httpx/SSL crash issues
 
     def get_catc_client(self) -> httpx.AsyncClient:
         """Get an httpx async client configured for Catalyst Center.
@@ -144,9 +160,10 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         Simple entry point that uses base class orchestration to run async
         verification tests. This thin wrapper:
         1. Creates and manages an event loop for async operations
-        2. Calls NACTestBase.run_verification_async() to execute tests
-        3. Passes results to NACTestBase.process_results_smart() for reporting
-        4. Ensures proper cleanup of async resources
+        2. Creates the Catalyst Center client (deferred from setup for fork safety)
+        3. Calls NACTestBase.run_verification_async() to execute tests
+        4. Passes results to NACTestBase.process_results_smart() for reporting
+        5. Ensures proper cleanup of async resources
 
         The actual verification logic is handled by:
         - get_items_to_verify() - must be implemented by the test class
@@ -161,10 +178,17 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
             This method creates its own event loop to ensure compatibility
             with PyATS synchronous test execution model. The loop and client
             connections are properly closed after test completion.
+
+            Client creation is done HERE (not in setup) to avoid macOS fork()
+            issues with httpx/SSL. Creating httpx.AsyncClient after fork() but
+            before entering an async context can crash on macOS.
         """
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
+            # Create client INSIDE the event loop context to avoid macOS fork+SSL crash
+            self.client = self.get_catc_client()
+
             # Call the base class generic orchestration
             results = loop.run_until_complete(self.run_verification_async())
 
@@ -172,6 +196,6 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
             self.process_results_smart(results, steps)
         finally:
             # Clean up the Catalyst Center client connection
-            if hasattr(self, "client"):
+            if self.client is not None:  # MANDATORY: never use hasattr()
                 loop.run_until_complete(self.client.aclose())
             loop.close()

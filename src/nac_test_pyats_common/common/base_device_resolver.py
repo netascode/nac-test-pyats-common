@@ -215,7 +215,7 @@ class BaseDeviceResolver(ABC):
         # Runtime check for dict type (defensive programming for non-mypy users)
         if not isinstance(os_platform_info, dict):
             type_name = type(os_platform_info).__name__  # type: ignore[unreachable]
-            raise ValueError(  # type: ignore[unreachable]
+            raise ValueError(
                 f"extract_os_platform_type must return a dict, got {type_name}"
             )
         if "os" not in os_platform_info:

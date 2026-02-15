@@ -57,7 +57,7 @@ class MockDeviceResolver(BaseDeviceResolver):
         return ("MOCK_USERNAME", "MOCK_PASSWORD")
 
 
-@pytest.fixture  # type: ignore[untyped-decorator]
+@pytest.fixture
 def sample_data_model() -> dict[str, Any]:
     """Provide a sample data model for testing."""
     return {
@@ -86,7 +86,7 @@ def sample_data_model() -> dict[str, Any]:
     }
 
 
-@pytest.fixture  # type: ignore[untyped-decorator]
+@pytest.fixture
 def mock_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set mock credential environment variables."""
     monkeypatch.setenv("MOCK_USERNAME", "test_user")

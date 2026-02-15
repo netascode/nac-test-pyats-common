@@ -3,24 +3,10 @@
 
 """Unit tests for SDWANManagerAuth.
 
-This module tests actual business logic for SDWAN Manager authentication:
+Tests SD-WAN Manager authentication:
 1. Error propagation from subprocess execution
 2. Environment variable validation (missing credentials)
 3. URL normalization (trailing slash handling)
-
-NOTE: The following tests were removed as they only verified mocks return mocked values:
-- test_successful_authentication (mock_exec.return_value = {...} ->
-  assert auth_data == {...})
-- test_authentication_with_ssl_verification (same pattern)
-- test_authentication_without_xsrf_token (same pattern)
-- test_authentication_passes_auth_script (only checks mock was called)
-- test_credentials_sent_correctly (only checks mock was called with args)
-- test_default_verify_ssl_is_false (only checks mock was called with args)
-- test_get_auth_success (mock returns mock)
-- test_get_auth_insecure_default_true (only verifies callable exists)
-- test_auth_func_wrapper_calls_authenticate (mock setup, verify mock called)
-- test_get_auth_insecure_variations (only checks mock was called)
-- TestConstants class (tests that 1800 == 1800, 30.0 == 30.0, 10.0 == 10.0)
 """
 
 from unittest.mock import MagicMock, patch
@@ -31,7 +17,7 @@ from nac_test_pyats_common.sdwan.auth import SDWANManagerAuth
 
 
 class TestAuthenticateErrorHandling:
-    """Test error handling in _authenticate method - actual business logic."""
+    """Test error handling in _authenticate method."""
 
     @patch("nac_test_pyats_common.sdwan.auth.execute_auth_subprocess")
     def test_exception_from_subprocess_propagates(self, mock_exec: MagicMock) -> None:
@@ -53,7 +39,7 @@ class TestAuthenticateErrorHandling:
 
 
 class TestGetAuthEnvironmentValidation:
-    """Test environment variable validation - actual business logic."""
+    """Test environment variable validation."""
 
     def test_get_auth_missing_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when SDWAN_URL is missing."""

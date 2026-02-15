@@ -1921,12 +1921,14 @@ wheels = [
 
 [[package]]
 name = "nac-test"
-version = "1.1.0b2"
+version = "1.1.0b3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
+    { name = "asyncssh" },
     { name = "colorama" },
     { name = "errorhandler" },
+    { name = "filelock" },
     { name = "genie" },
     { name = "httpx" },
     { name = "jinja2" },
@@ -1942,13 +1944,14 @@ dependencies = [
     { name = "robotframework-pabot" },
     { name = "robotframework-requests" },
     { name = "ruamel-yaml" },
+    { name = "scrapli-netconf" },
     { name = "setuptools" },
     { name = "typer" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1b/d7/1b7fb3efeb9f90564e98f9350b964273bd513f87c6b7c10a0268c24797a5/nac_test-1.1.0b2.tar.gz", hash = "sha256:ec4901538545865cf5808303042666bb2ff7fbf9e68fc5c27be4c466173a38dd", size = 611960 }
+sdist = { url = "https://files.pythonhosted.org/packages/04/1c/9da78822387805db26c75dfd90e3773ee48713b792357679574cf8f0e3bc/nac_test-1.1.0b3.tar.gz", hash = "sha256:edca29614b12f6a252591deb3feebc61dad3f483d29b00383d0272e04860ecef", size = 721882 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/25/6242421048afd1b886e066fdead89019e9b96e227f9a301a28bc1ab5b0f5/nac_test-1.1.0b2-py3-none-any.whl", hash = "sha256:e80eecf932129476ad7626b584b0b1c722649c1bb8402f78f34d8539748b3672", size = 181886 },
+    { url = "https://files.pythonhosted.org/packages/72/9c/9e187642293b945db69085fe612360baee58ca40f4d8ba1114f967e267a4/nac_test-1.1.0b3-py3-none-any.whl", hash = "sha256:4b3e192e8d57dce5323eadb9711bf69d572136258f4a003a8ab50842d4cd7a16", size = 217164 },
 ]
 
 [[package]]
@@ -1985,7 +1988,7 @@ requires-dist = [
     { name = "filelock", specifier = ">=3.20.1" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "nac-test", specifier = "==1.1.0b2" },
+    { name = "nac-test", specifier = "==1.1.0b3" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
@@ -3432,6 +3435,28 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f2/1c/d7b67ab43f30013b47c12b42d1acd354c195351a3f7a1d67f59e54227ede/ruff-0.14.10-py3-none-win32.whl", hash = "sha256:104c49fc7ab73f3f3a758039adea978869a918f31b73280db175b43a2d9b51d6", size = 13196187 },
     { url = "https://files.pythonhosted.org/packages/fb/9c/896c862e13886fae2af961bef3e6312db9ebc6adc2b156fe95e615dee8c1/ruff-0.14.10-py3-none-win_amd64.whl", hash = "sha256:466297bd73638c6bdf06485683e812db1c00c7ac96d4ddd0294a338c62fdc154", size = 14661283 },
     { url = "https://files.pythonhosted.org/packages/74/31/b0e29d572670dca3674eeee78e418f20bdf97fa8aa9ea71380885e175ca0/ruff-0.14.10-py3-none-win_arm64.whl", hash = "sha256:e51d046cf6dda98a4633b8a8a771451107413b0f07183b2bef03f075599e44e6", size = 13729839 },
+]
+
+[[package]]
+name = "scrapli"
+version = "2025.1.30"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/b0/72fd21e1abdfc0e36f07c56c7aad339bf554771784464980d70249fe0f64/scrapli-2025.1.30.tar.gz", hash = "sha256:3426a38b5dd6a4c67749c30f14102c04a4a43d3da17710b46fec7e53409b340e", size = 104403 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/2d/b7dc63b1ff7d60908843fcee2a8897735a06f18d04654baf83f95a4b1a2f/scrapli-2025.1.30-py3-none-any.whl", hash = "sha256:f71ca4e96b56ad245f34269dc3eedf168aca54eb7b1ba96ad0c965c2b76f807e", size = 145741 },
+]
+
+[[package]]
+name = "scrapli-netconf"
+version = "2026.1.12"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "scrapli" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/64/30/5498e4cef2b1c8ba9826d6b05a6507b0906c8ccc168d486f8a3df58414cd/scrapli_netconf-2026.1.12.tar.gz", hash = "sha256:6e497d52c986ed8d05504767d84e56487f5887271f1ab59b569fb30e879f8f9b", size = 30372 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/a4/52c43c4ebf8da5868091bcae4be859c16a8a8782adfc94643618c4e5a89b/scrapli_netconf-2026.1.12-py3-none-any.whl", hash = "sha256:ec833aa4f29407af2622391c3afb84721af736869edd7d4b1f4b4e9faf9decda", size = 37171 },
 ]
 
 [[package]]

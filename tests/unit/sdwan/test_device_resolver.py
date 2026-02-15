@@ -20,7 +20,7 @@ import pytest
 from nac_test_pyats_common.sdwan.device_resolver import SDWANDeviceResolver
 
 
-@pytest.fixture  # type: ignore[untyped-decorator]
+@pytest.fixture
 def sample_data_model() -> dict[str, Any]:
     """Provide a sample SD-WAN data model for testing.
 
@@ -75,7 +75,7 @@ def sample_data_model() -> dict[str, Any]:
     }
 
 
-@pytest.fixture  # type: ignore[untyped-decorator]
+@pytest.fixture
 def mock_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set IOSXE credential environment variables."""
     monkeypatch.setenv("IOSXE_USERNAME", "test_user")
@@ -232,7 +232,8 @@ class TestManagementIPExtraction:
                         "routers": [
                             {
                                 "chassis_id": "ABC123",
-                                "management_ip_variable": "custom_mgmt_ip",  # Router override
+                                # Router override
+                                "management_ip_variable": "custom_mgmt_ip",
                                 "device_variables": {
                                     "system_hostname": "router1",
                                     "vpn511_int1_if_ipv4_address": "10.1.1.1/32",
@@ -246,7 +247,7 @@ class TestManagementIPExtraction:
         }
 
         resolver = SDWANDeviceResolver(data_model)
-        device_data: dict[str, Any] = data_model["sdwan"]["sites"][0]["routers"][0]  # type: ignore[index]
+        device_data: dict[str, Any] = data_model["sdwan"]["sites"][0]["routers"][0]
 
         host_ip = resolver.extract_host_ip(device_data)
         # Should use custom_mgmt_ip (router-level override), not global variable
@@ -277,7 +278,8 @@ class TestManagementIPExtraction:
                                 "chassis_id": "ABC123",
                                 "device_variables": {
                                     "system_hostname": "router1",
-                                    "vpn511_int1_if_ipv4_address": "10.1.1.1",  # No CIDR
+                                    # No CIDR
+                                    "vpn511_int1_if_ipv4_address": "10.1.1.1",
                                 },
                             }
                         ],
@@ -287,7 +289,7 @@ class TestManagementIPExtraction:
         }
 
         resolver = SDWANDeviceResolver(data_model)
-        device_data: dict[str, Any] = data_model["sdwan"]["sites"][0]["routers"][0]  # type: ignore[index]
+        device_data: dict[str, Any] = data_model["sdwan"]["sites"][0]["routers"][0]
 
         host_ip = resolver.extract_host_ip(device_data)
         assert host_ip == "10.1.1.1"
@@ -316,7 +318,7 @@ class TestManagementIPExtraction:
         }
 
         resolver = SDWANDeviceResolver(data_model)
-        device_data: dict[str, Any] = data_model["sdwan"]["sites"][0]["routers"][0]  # type: ignore[index]
+        device_data: dict[str, Any] = data_model["sdwan"]["sites"][0]["routers"][0]
 
         with pytest.raises(ValueError) as exc_info:
             resolver.extract_host_ip(device_data)

@@ -9,7 +9,8 @@ This module tests actual business logic for SDWAN Manager authentication:
 3. URL normalization (trailing slash handling)
 
 NOTE: The following tests were removed as they only verified mocks return mocked values:
-- test_successful_authentication (mock_exec.return_value = {...} -> assert auth_data == {...})
+- test_successful_authentication (mock_exec.return_value = {...} ->
+  assert auth_data == {...})
 - test_authentication_with_ssl_verification (same pattern)
 - test_authentication_without_xsrf_token (same pattern)
 - test_authentication_passes_auth_script (only checks mock was called)
@@ -33,18 +34,22 @@ class TestAuthenticateErrorHandling:
     """Test error handling in _authenticate method - actual business logic."""
 
     @patch("nac_test_pyats_common.sdwan.auth.execute_auth_subprocess")
-    def test_subprocess_error_propagates(self, mock_exec: MagicMock) -> None:
-        """Test that subprocess errors propagate correctly."""
-        from nac_test.pyats_core.common.subprocess_auth import SubprocessAuthError
+    def test_exception_from_subprocess_propagates(self, mock_exec: MagicMock) -> None:
+        """Test that exceptions from execute_auth_subprocess propagate correctly.
 
-        mock_exec.side_effect = SubprocessAuthError("Authentication failed")
+        This tests the error propagation behavior - when the subprocess execution
+        fails, the error should bubble up to the caller. We use RuntimeError as
+        a stand-in since the actual SubprocessAuthError inherits from RuntimeError.
+        """
+        error_msg = "Authentication subprocess failed"
+        mock_exec.side_effect = RuntimeError(error_msg)
 
-        with pytest.raises(SubprocessAuthError) as exc_info:
+        with pytest.raises(RuntimeError) as exc_info:
             SDWANManagerAuth._authenticate(
                 "https://sdwan.example.com", "admin", "wrong-password", verify_ssl=False
             )
 
-        assert "authentication failed" in str(exc_info.value).lower()
+        assert error_msg in str(exc_info.value)
 
 
 class TestGetAuthEnvironmentValidation:

@@ -21,9 +21,7 @@ import logging
 import os
 from typing import Any
 
-from nac_test.pyats_core.common.ssh_base_test import (
-    SSHTestBase,  # type: ignore[import-untyped]
-)
+from nac_test.pyats_core.common.ssh_base_test import SSHTestBase
 
 from .device_resolver import CatalystCenterDeviceResolver
 

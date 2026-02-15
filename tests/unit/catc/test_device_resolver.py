@@ -19,7 +19,7 @@ import pytest
 from nac_test_pyats_common.catc.device_resolver import CatalystCenterDeviceResolver
 
 
-@pytest.fixture  # type: ignore[untyped-decorator]
+@pytest.fixture
 def sample_data_model() -> dict[str, Any]:
     """Provide a sample Catalyst Center data model for testing.
 
@@ -62,7 +62,7 @@ def sample_data_model() -> dict[str, Any]:
     }
 
 
-@pytest.fixture  # type: ignore[untyped-decorator]
+@pytest.fixture
 def mock_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set IOSXE credential environment variables."""
     monkeypatch.setenv("IOSXE_USERNAME", "test_user")

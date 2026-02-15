@@ -17,10 +17,10 @@ import os
 from typing import Any
 
 import httpx
-from nac_test.pyats_core.common.base_test import (
-    NACTestBase,  # type: ignore[import-untyped]
-)
-from pyats import aetest  # type: ignore[import-untyped]
+from nac_test.pyats_core.common.base_test import NACTestBase
+from pyats import aetest
+
+from nac_test_pyats_common.common import AUTH_FAILED_MESSAGE_TEMPLATE
 
 from .auth import CatalystCenterAuth
 
@@ -71,7 +71,7 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
     client: httpx.AsyncClient | None = None  # MUST declare at class level
     auth_data: dict[str, Any]  # Declared at class level for type checker compatibility
 
-    @aetest.setup  # type: ignore[misc, untyped-decorator]
+    @aetest.setup  # type: ignore[untyped-decorator]
     def setup(self) -> None:
         """Setup method that extends the generic base class setup.
 
@@ -95,11 +95,11 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         # This reads from file cache - no httpx client creation here
         try:
             self.auth_data = CatalystCenterAuth.get_auth()
-        except (RuntimeError, ValueError) as e:
+        except Exception as e:
             # Convert auth failures to FAILED (not ERRORED) - auth issues are
             # expected failure conditions, not infrastructure errors
             self.auth_data = {}  # Ensure attribute exists for cleanup code
-            self.failed(f"Authentication failed: {e}")
+            self.failed(AUTH_FAILED_MESSAGE_TEMPLATE.format(e))
             return
 
         # Get controller URL from environment

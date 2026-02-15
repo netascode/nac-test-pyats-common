@@ -27,6 +27,12 @@ Example:
 
 from nac_test_pyats_common.common.base_device_resolver import BaseDeviceResolver
 
+# Shared error message template for authentication failures across all architectures.
+# Used by APICTestBase, SDWANManagerTestBase, and CatalystCenterTestBase setup() methods
+# to convert auth exceptions to FAILED status with a consistent message format.
+AUTH_FAILED_MESSAGE_TEMPLATE: str = "Authentication failed: {}"
+
 __all__ = [
+    "AUTH_FAILED_MESSAGE_TEMPLATE",
     "BaseDeviceResolver",
 ]

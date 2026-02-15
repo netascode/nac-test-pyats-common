@@ -19,7 +19,15 @@ import httpx
 from nac_test.pyats_core.common.base_test import NACTestBase
 from pyats import aetest
 
+from nac_test_pyats_common.common import AUTH_FAILED_MESSAGE_TEMPLATE
+
 from .auth import APICAuth
+from .defaults_resolver import (
+    DEFAULT_APIC_PREFIX,
+    DEFAULT_MISSING_ERROR,
+    ensure_defaults_block_exists,
+)
+from .defaults_resolver import get_default_value as _resolve_default_value
 
 
 class APICTestBase(NACTestBase):  # type: ignore[misc]
@@ -61,6 +69,76 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
     client: httpx.AsyncClient | None = None  # MUST declare at class level
     token: str | None = None  # MUST declare at class level for cleanup safety
 
+    def _ensure_defaults_block_exists(self) -> None:
+        """Validate that the defaults block exists in the data model.
+
+        Raises:
+            ValueError: If the defaults.apic block is missing from the data model,
+                indicating the defaults file was not passed to nac-test.
+        """
+        ensure_defaults_block_exists(
+            self.data_model, DEFAULT_APIC_PREFIX, DEFAULT_MISSING_ERROR
+        )
+
+    def get_default_value(self, *default_paths: str, required: bool = True) -> Any:
+        """Read default value(s) from the defaults block in the merged data model.
+
+        ACI as Code provides a defaults file (defaults.nac.yaml) that gets merged
+        into the data model as a separate 'defaults' block at the root level.
+
+        This method supports both single-path lookups and cascade/fallback behavior
+        across multiple paths. When multiple paths are provided, the first non-None
+        value found is returned (cascade behavior).
+
+        Note on Return Type:
+            The return type is intentionally `Any` because JMESPath queries can return
+            any type (str, int, float, bool, dict, list, None) depending on the data
+            model structure. This is not a type safety failure - the return type is
+            genuinely dynamic and depends on what's stored at the queried path.
+
+            Callers typically know the expected type from context:
+                default_pod: int = self.get_default_value("tenants.l3outs.nodes.pod")
+                default_name: str = self.get_default_value("tenants.vrf.name")
+
+        Args:
+            *default_paths: One or more JMESPaths relative to 'defaults.apic'.
+                Single path: self.get_default_value("tenants.l3outs.nodes.pod")
+                Cascade: self.get_default_value("path1", "path2", "path3")
+            required: If True (default), raises ValueError when no default is found.
+                Set to False only for truly optional defaults.
+
+        Returns:
+            The first non-None default value found from the provided paths.
+            Returns None only if required=False and no defaults exist.
+            Note: When required=True (default), this method never returns None -
+            it either returns a value or raises ValueError.
+
+        Raises:
+            TypeError: If no paths are provided.
+            ValueError: If the defaults block is missing (defaults file not
+                passed) or if none of the paths contain values (when required=True).
+
+        Examples:
+            # Single path (most common):
+            default_pod = self.get_default_value("tenants.l3outs.nodes.pod")
+
+            # Cascade - try multiple paths, return first found:
+            default_pod = self.get_default_value(
+                "tenants.l3outs.nodes.pod",
+                "tenants.l3outs.node_profiles.nodes.pod",
+            )
+
+            # Optional - returns None instead of raising if not found:
+            value = self.get_default_value("tenants.l3outs.nodes.pod", required=False)
+        """
+        return _resolve_default_value(
+            self.data_model,
+            *default_paths,
+            required=required,
+            defaults_prefix=DEFAULT_APIC_PREFIX,
+            missing_error=DEFAULT_MISSING_ERROR,
+        )
+
     @aetest.setup  # type: ignore[untyped-decorator]
     def setup(self) -> None:
         """Setup method that extends the generic base class setup.
@@ -86,11 +164,11 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
             self.token = APICAuth.get_token(
                 self.controller_url, self.username, self.password
             )
-        except (RuntimeError, ValueError) as e:
+        except Exception as e:
             # Convert auth failures to FAILED (not ERRORED) - auth issues are
             # expected failure conditions, not infrastructure errors
-            self.token = ""  # Ensure attribute exists for cleanup code
-            self.failed(f"Authentication failed: {e}")
+            self.token = None  # Class-level default already handles this
+            self.failed(AUTH_FAILED_MESSAGE_TEMPLATE.format(e))
             return
 
         # NOTE: Client creation is deferred to run_async_verification_test()

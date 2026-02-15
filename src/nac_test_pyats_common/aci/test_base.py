@@ -16,10 +16,8 @@ import asyncio
 from typing import Any
 
 import httpx
-from nac_test.pyats_core.common.base_test import (
-    NACTestBase,  # type: ignore[import-untyped]
-)
-from pyats import aetest  # type: ignore[import-untyped]
+from nac_test.pyats_core.common.base_test import NACTestBase
+from pyats import aetest
 
 from .auth import APICAuth
 
@@ -33,7 +31,8 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
     capture. It serves as the foundation for all ACI-specific test classes.
 
     Attributes:
-        token (str): APIC authentication token obtained during setup.
+        token (str | None): APIC authentication token obtained during setup.
+            None until successful authentication, or reset to None on auth failure.
         client (httpx.AsyncClient | None): Wrapped async HTTP client configured
             for APIC. Initialized to None, set during run_async_verification_test().
         controller_url (str): Base URL of the APIC controller (inherited).
@@ -60,8 +59,9 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
     """
 
     client: httpx.AsyncClient | None = None  # MUST declare at class level
+    token: str | None = None  # MUST declare at class level for cleanup safety
 
-    @aetest.setup  # type: ignore[misc, untyped-decorator]
+    @aetest.setup  # type: ignore[untyped-decorator]
     def setup(self) -> None:
         """Setup method that extends the generic base class setup.
 

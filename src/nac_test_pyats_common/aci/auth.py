@@ -239,10 +239,10 @@ except Exception as e:
         to efficiently manage token lifecycle.
 
         Environment Variables Required:
-            APIC_URL: Base URL of the APIC controller
-            APIC_USERNAME: APIC username for authentication
-            APIC_PASSWORD: APIC password for authentication
-            APIC_INSECURE: Optional. Set to "True" to disable SSL verification
+            ACI_URL: Base URL of the APIC controller
+            ACI_USERNAME: APIC username for authentication
+            ACI_PASSWORD: APIC password for authentication
+            ACI_INSECURE: Optional. Set to "True" to disable SSL verification
                 (default: True for backward compatibility)
 
         Returns:
@@ -251,10 +251,10 @@ except Exception as e:
         Raises:
             ValueError: If required environment variables are not set.
         """
-        url = os.environ.get("APIC_URL")
-        username = os.environ.get("APIC_USERNAME")
-        password = os.environ.get("APIC_PASSWORD")
-        insecure = os.environ.get("APIC_INSECURE", "True").lower() in (
+        url = os.environ.get("ACI_URL")
+        username = os.environ.get("ACI_USERNAME")
+        password = os.environ.get("ACI_PASSWORD")
+        insecure = os.environ.get("ACI_INSECURE", "True").lower() in (
             "true",
             "1",
             "yes",
@@ -263,11 +263,11 @@ except Exception as e:
         # Validate environment variables and collect missing ones
         missing_vars: list[str] = []
         if not url:
-            missing_vars.append("APIC_URL")
+            missing_vars.append("ACI_URL")
         if not username:
-            missing_vars.append("APIC_USERNAME")
+            missing_vars.append("ACI_USERNAME")
         if not password:
-            missing_vars.append("APIC_PASSWORD")
+            missing_vars.append("ACI_PASSWORD")
 
         if missing_vars:
             raise ValueError(

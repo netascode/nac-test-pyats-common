@@ -39,38 +39,38 @@ class TestGetAuthEnvironmentValidation:
     """Test environment variable validation."""
 
     def test_get_auth_missing_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test error when APIC_URL is missing."""
-        monkeypatch.setenv("APIC_USERNAME", "admin")
-        monkeypatch.setenv("APIC_PASSWORD", "password123")
-        # APIC_URL not set
+        """Test error when ACI_URL is missing."""
+        monkeypatch.setenv("ACI_USERNAME", "admin")
+        monkeypatch.setenv("ACI_PASSWORD", "password123")
+        # ACI_URL not set
 
         with pytest.raises(ValueError) as exc_info:
             APICAuth.get_auth()
 
-        assert "APIC_URL" in str(exc_info.value)
+        assert "ACI_URL" in str(exc_info.value)
         assert "Missing required environment variables" in str(exc_info.value)
 
     def test_get_auth_missing_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test error when APIC_USERNAME is missing."""
-        monkeypatch.setenv("APIC_URL", "https://apic.example.com")
-        monkeypatch.setenv("APIC_PASSWORD", "password123")
-        # APIC_USERNAME not set
+        """Test error when ACI_USERNAME is missing."""
+        monkeypatch.setenv("ACI_URL", "https://apic.example.com")
+        monkeypatch.setenv("ACI_PASSWORD", "password123")
+        # ACI_USERNAME not set
 
         with pytest.raises(ValueError) as exc_info:
             APICAuth.get_auth()
 
-        assert "APIC_USERNAME" in str(exc_info.value)
+        assert "ACI_USERNAME" in str(exc_info.value)
 
     def test_get_auth_missing_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test error when APIC_PASSWORD is missing."""
-        monkeypatch.setenv("APIC_URL", "https://apic.example.com")
-        monkeypatch.setenv("APIC_USERNAME", "admin")
-        # APIC_PASSWORD not set
+        """Test error when ACI_PASSWORD is missing."""
+        monkeypatch.setenv("ACI_URL", "https://apic.example.com")
+        monkeypatch.setenv("ACI_USERNAME", "admin")
+        # ACI_PASSWORD not set
 
         with pytest.raises(ValueError) as exc_info:
             APICAuth.get_auth()
 
-        assert "APIC_PASSWORD" in str(exc_info.value)
+        assert "ACI_PASSWORD" in str(exc_info.value)
 
     def test_get_auth_multiple_missing_vars(
         self, monkeypatch: pytest.MonkeyPatch
@@ -82,9 +82,9 @@ class TestGetAuthEnvironmentValidation:
             APICAuth.get_auth()
 
         error_msg = str(exc_info.value)
-        assert "APIC_URL" in error_msg
-        assert "APIC_USERNAME" in error_msg
-        assert "APIC_PASSWORD" in error_msg
+        assert "ACI_URL" in error_msg
+        assert "ACI_USERNAME" in error_msg
+        assert "ACI_PASSWORD" in error_msg
 
 
 class TestGetAuthUrlNormalization:
@@ -95,9 +95,9 @@ class TestGetAuthUrlNormalization:
         self, mock_get_token: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test that trailing slash is removed from URL."""
-        monkeypatch.setenv("APIC_URL", "https://apic.example.com/")
-        monkeypatch.setenv("APIC_USERNAME", "admin")
-        monkeypatch.setenv("APIC_PASSWORD", "password123")
+        monkeypatch.setenv("ACI_URL", "https://apic.example.com/")
+        monkeypatch.setenv("ACI_USERNAME", "admin")
+        monkeypatch.setenv("ACI_PASSWORD", "password123")
 
         mock_get_token.return_value = "test-token"
 
@@ -109,17 +109,17 @@ class TestGetAuthUrlNormalization:
 
 
 class TestGetAuthInsecureFlag:
-    """Test APIC_INSECURE environment variable handling."""
+    """Test ACI_INSECURE environment variable handling."""
 
     @patch("nac_test_pyats_common.aci.auth.APICAuth.get_token")
     def test_get_auth_insecure_default_true(
         self, mock_get_token: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test that APIC_INSECURE defaults to True (verify_ssl=False)."""
-        monkeypatch.setenv("APIC_URL", "https://apic.example.com")
-        monkeypatch.setenv("APIC_USERNAME", "admin")
-        monkeypatch.setenv("APIC_PASSWORD", "password123")
-        # APIC_INSECURE not set - should default to True
+        """Test that ACI_INSECURE defaults to True (verify_ssl=False)."""
+        monkeypatch.setenv("ACI_URL", "https://apic.example.com")
+        monkeypatch.setenv("ACI_USERNAME", "admin")
+        monkeypatch.setenv("ACI_PASSWORD", "password123")
+        # ACI_INSECURE not set - should default to True
 
         mock_get_token.return_value = "test-token"
 
@@ -133,11 +133,11 @@ class TestGetAuthInsecureFlag:
     def test_get_auth_insecure_false_enables_ssl(
         self, mock_get_token: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test that APIC_INSECURE=False enables SSL verification."""
-        monkeypatch.setenv("APIC_URL", "https://apic.example.com")
-        monkeypatch.setenv("APIC_USERNAME", "admin")
-        monkeypatch.setenv("APIC_PASSWORD", "password123")
-        monkeypatch.setenv("APIC_INSECURE", "False")
+        """Test that ACI_INSECURE=False enables SSL verification."""
+        monkeypatch.setenv("ACI_URL", "https://apic.example.com")
+        monkeypatch.setenv("ACI_USERNAME", "admin")
+        monkeypatch.setenv("ACI_PASSWORD", "password123")
+        monkeypatch.setenv("ACI_INSECURE", "False")
 
         mock_get_token.return_value = "test-token"
 
@@ -150,11 +150,11 @@ class TestGetAuthInsecureFlag:
     def test_get_auth_insecure_zero_enables_ssl(
         self, mock_get_token: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test that APIC_INSECURE=0 enables SSL verification."""
-        monkeypatch.setenv("APIC_URL", "https://apic.example.com")
-        monkeypatch.setenv("APIC_USERNAME", "admin")
-        monkeypatch.setenv("APIC_PASSWORD", "password123")
-        monkeypatch.setenv("APIC_INSECURE", "0")
+        """Test that ACI_INSECURE=0 enables SSL verification."""
+        monkeypatch.setenv("ACI_URL", "https://apic.example.com")
+        monkeypatch.setenv("ACI_USERNAME", "admin")
+        monkeypatch.setenv("ACI_PASSWORD", "password123")
+        monkeypatch.setenv("ACI_INSECURE", "0")
 
         mock_get_token.return_value = "test-token"
 

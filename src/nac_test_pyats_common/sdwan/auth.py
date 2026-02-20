@@ -159,36 +159,47 @@ auth_request = urllib.request.Request(
 )
 
 try:
-    opener.open(auth_request, timeout=timeout)
+    auth_response = opener.open(auth_request, timeout=timeout)
+    auth_body = auth_response.read().decode("utf-8", errors="replace")
 except urllib.error.HTTPError as e:
     if e.code != 302:  # 302 redirect is expected on successful login
         raise
+    auth_body = ""
 
-# Extract JSESSIONID from cookies
-jsessionid = None
-for cookie in cookie_jar:
-    if cookie.name == "JSESSIONID":
-        jsessionid = cookie.value
-        break
-
-if jsessionid is None:
-    result = {"error": "No JSESSIONID cookie received - authentication may have failed"}
+# SD-WAN Manager returns HTTP 200 with an HTML login page on auth failure
+# (it never returns 401/403). Successful login returns HTTP 200 with an empty body.
+if auth_body and "<html" in auth_body.lower():
+    result = {"error": "Authentication failed - SD-WAN Manager returned the login page. Verify SDWAN_USERNAME and SDWAN_PASSWORD are correct."}
 else:
-    # Step 2: Fetch XSRF token (required for SDWAN Manager 19.2+)
-    xsrf_token = None
-    try:
-        token_request = urllib.request.Request(
-            f"{url}/dataservice/client/token",
-            headers={"Cookie": f"JSESSIONID={jsessionid}"},
-            method="GET"
-        )
-        token_response = opener.open(token_request, timeout=xsrf_timeout)
-        if token_response.status == 200:
-            xsrf_token = token_response.read().decode("utf-8").strip()
-    except Exception:
-        pass  # Pre-19.2 versions do not support XSRF tokens
+    # Extract JSESSIONID from cookies
+    jsessionid = None
+    for cookie in cookie_jar:
+        if cookie.name == "JSESSIONID":
+            jsessionid = cookie.value
+            break
 
-    result = {"jsessionid": jsessionid, "xsrf_token": xsrf_token}
+    if jsessionid is None:
+        result = {"error": "No JSESSIONID cookie received - authentication may have failed"}
+    else:
+        # Step 2: Fetch XSRF token (required for SDWAN Manager 19.2+)
+        xsrf_token = None
+        try:
+            token_request = urllib.request.Request(
+                f"{url}/dataservice/client/token",
+                headers={"Cookie": f"JSESSIONID={jsessionid}"},
+                method="GET"
+            )
+            token_response = opener.open(token_request, timeout=xsrf_timeout)
+            content_type = token_response.headers.get("Content-Type", "")
+            if token_response.status == 200 and "text/html" not in content_type:
+                token_body = token_response.read().decode("utf-8").strip()
+                # Defense-in-depth: real XSRF tokens are hex strings, not HTML
+                if token_body and "<html" not in token_body.lower():
+                    xsrf_token = token_body
+        except Exception:
+            pass  # Pre-19.2 versions do not support XSRF tokens
+
+        result = {"jsessionid": jsessionid, "xsrf_token": xsrf_token}
 """
 
         # Execute authentication in subprocess (fork-safe on macOS)

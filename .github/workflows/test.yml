@@ -27,7 +27,7 @@ jobs:
         run: bandit -r src/ -ll -f json -o bandit-security-report.json -c pyproject.toml
         
       - name: Upload security report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: bandit-security-report

@@ -346,3 +346,70 @@ class TestAuthScriptXsrfTokenValidation:
         result = _exec_script(mocker, _BASE_PARAMS, opener, jar)
 
         assert result["xsrf_token"] is None
+
+
+# ===========================================================================
+# 4. _authenticate() method — subprocess integration
+# ===========================================================================
+
+
+class TestAuthenticateMethod:
+    """Test _authenticate() with mocked execute_auth_subprocess."""
+
+    def test_subprocess_error_propagates(self, mocker: MockerFixture) -> None:
+        """Subprocess errors propagate correctly."""
+        from nac_test.pyats_core.common.subprocess_auth import (
+            SubprocessAuthError,
+        )
+
+        mock_exec = mocker.patch(
+            "nac_test_pyats_common.sdwan.auth.execute_auth_subprocess"
+        )
+        mock_exec.side_effect = SubprocessAuthError("Authentication failed")
+
+        with pytest.raises(SubprocessAuthError) as exc_info:
+            SDWANManagerAuth._authenticate(
+                "https://sdwan.example.com",
+                "admin",
+                "wrong-password",
+                verify_ssl=False,
+            )
+
+        assert "authentication failed" in str(exc_info.value).lower()
+
+    def test_successful_auth_returns_session_data(self, mocker: MockerFixture) -> None:
+        """Successful auth returns jsessionid, xsrf_token, and TTL."""
+        mock_exec = mocker.patch(
+            "nac_test_pyats_common.sdwan.auth.execute_auth_subprocess"
+        )
+        mock_exec.return_value = {
+            "jsessionid": "sess-abc",
+            "xsrf_token": "token-xyz",
+        }
+
+        result, ttl = SDWANManagerAuth._authenticate(
+            "https://sdwan.example.com",
+            "admin",
+            "password123",
+            verify_ssl=False,
+        )
+
+        assert result == {"jsessionid": "sess-abc", "xsrf_token": "token-xyz"}
+        assert ttl == 1800
+
+    def test_auth_without_xsrf_token(self, mocker: MockerFixture) -> None:
+        """Pre-19.2 auth returns None for xsrf_token."""
+        mock_exec = mocker.patch(
+            "nac_test_pyats_common.sdwan.auth.execute_auth_subprocess"
+        )
+        mock_exec.return_value = {"jsessionid": "sess-old"}
+
+        result, ttl = SDWANManagerAuth._authenticate(
+            "https://sdwan.example.com",
+            "admin",
+            "password123",
+            verify_ssl=False,
+        )
+
+        assert result == {"jsessionid": "sess-old", "xsrf_token": None}
+        assert ttl == 1800

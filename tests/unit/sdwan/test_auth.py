@@ -286,3 +286,63 @@ class TestAuthScriptFailureDetection:
 
         assert "error" in result
         assert "No JSESSIONID cookie" in result["error"]
+
+
+# ===========================================================================
+# 3. Script body logic — XSRF token defense-in-depth
+# ===========================================================================
+
+
+class TestAuthScriptXsrfTokenValidation:
+    """Test XSRF token defense-in-depth checks."""
+
+    def test_xsrf_html_content_type_rejected(self, mocker: MockerFixture) -> None:
+        """Token endpoint returning text/html is rejected (not stored)."""
+        auth_resp = _make_http_response(body="")
+        token_resp = _make_http_response(
+            body="<html>login</html>", content_type="text/html"
+        )
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=[auth_resp, token_resp])
+
+        cookie = _make_jsessionid_cookie()
+        jar = MagicMock()
+        jar.__iter__ = MagicMock(return_value=iter([cookie]))
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener, jar)
+
+        assert result["jsessionid"] == "abc123"
+        assert result["xsrf_token"] is None
+
+    def test_xsrf_html_body_rejected(self, mocker: MockerFixture) -> None:
+        """Token body containing '<html' is rejected even with ok content-type."""
+        auth_resp = _make_http_response(body="")
+        token_resp = _make_http_response(
+            body="<HTML><body>Login Page</body></HTML>",
+            content_type="application/octet-stream",
+        )
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=[auth_resp, token_resp])
+
+        cookie = _make_jsessionid_cookie()
+        jar = MagicMock()
+        jar.__iter__ = MagicMock(return_value=iter([cookie]))
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener, jar)
+
+        assert result["xsrf_token"] is None
+
+    def test_xsrf_empty_body_rejected(self, mocker: MockerFixture) -> None:
+        """Empty XSRF token body is treated as None."""
+        auth_resp = _make_http_response(body="")
+        token_resp = _make_http_response(body="   ", content_type="application/json")
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=[auth_resp, token_resp])
+
+        cookie = _make_jsessionid_cookie()
+        jar = MagicMock()
+        jar.__iter__ = MagicMock(return_value=iter([cookie]))
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener, jar)
+
+        assert result["xsrf_token"] is None

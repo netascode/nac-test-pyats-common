@@ -492,3 +492,29 @@ class TestGetAuthUrlNormalization:
 
         call_kwargs = mock_cache.call_args.kwargs
         assert call_kwargs["url"] == "https://sdwan.example.com"
+
+
+# ===========================================================================
+# 7. Script body survival through _indent_script_body() transform
+# ===========================================================================
+
+
+class TestScriptBodyIndentSurvival:
+    """Verify _AUTH_SCRIPT_BODY survives the indent transform used in production."""
+
+    def test_script_body_compiles_after_indent(self) -> None:
+        """_AUTH_SCRIPT_BODY remains valid Python after _indent_script_body().
+
+        In production, execute_auth_subprocess embeds the indented body inside
+        a try block. This test replicates that wrapper to verify the script
+        survives the indent transform without syntax errors.
+        """
+        from nac_test.pyats_core.common.subprocess_auth import (
+            _indent_script_body,
+        )
+
+        indented = _indent_script_body(_AUTH_SCRIPT_BODY, indent=4)
+        # Replicate the production wrapper from execute_auth_subprocess
+        wrapper = f"try:\n{indented}\nexcept Exception:\n    pass\n"
+        # compile() raises SyntaxError if the indented script is invalid
+        compile(wrapper, "<indented_auth_script>", "exec")

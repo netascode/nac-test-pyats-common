@@ -177,3 +177,112 @@ class TestAuthScriptHappyPath:
 
         assert result["jsessionid"] == "old-session"
         assert result["xsrf_token"] is None
+
+
+# ===========================================================================
+# 2. Script body logic — auth failure scenarios
+# ===========================================================================
+
+
+class TestAuthScriptFailureDetection:
+    """Test that the script correctly detects authentication failures."""
+
+    def test_html_login_page_returns_error(self, mocker: MockerFixture) -> None:
+        """HTTP 200 + HTML body = auth failure (current SD-WAN behavior)."""
+        auth_resp = _make_http_response(body=_HTML_LOGIN_PAGE)
+        opener = MagicMock()
+        opener.open = MagicMock(return_value=auth_resp)
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener)
+
+        assert "error" in result
+        assert "returned the login page" in result["error"]
+        assert "SDWAN_USERNAME" in result["error"]
+
+    def test_http_401_returns_credential_error(self, mocker: MockerFixture) -> None:
+        """HTTP 401 = defensive handling for future SD-WAN API fix."""
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            url="https://sdwan.example.com/j_security_check",
+            code=401,
+            msg="Unauthorized",
+            hdrs=MagicMock(),
+            fp=BytesIO(b""),
+        )
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=http_err)
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener)
+
+        assert "error" in result
+        assert "HTTP 401" in result["error"]
+        assert "SDWAN_USERNAME" in result["error"]
+
+    def test_http_403_returns_credential_error(self, mocker: MockerFixture) -> None:
+        """HTTP 403 = defensive handling for future SD-WAN API fix."""
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            url="https://sdwan.example.com/j_security_check",
+            code=403,
+            msg="Forbidden",
+            hdrs=MagicMock(),
+            fp=BytesIO(b""),
+        )
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=http_err)
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener)
+
+        assert "error" in result
+        assert "HTTP 403" in result["error"]
+        assert "SDWAN_USERNAME" in result["error"]
+
+    def test_http_500_returns_server_error(self, mocker: MockerFixture) -> None:
+        """HTTP 500 = server error, not a credentials issue."""
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            url="https://sdwan.example.com/j_security_check",
+            code=500,
+            msg="Internal Server Error",
+            hdrs=MagicMock(),
+            fp=BytesIO(b"something broke"),
+        )
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=http_err)
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener)
+
+        assert "error" in result
+        assert "HTTP 500" in result["error"]
+        # Server errors should NOT suggest checking credentials
+        assert "SDWAN_USERNAME" not in result["error"]
+        assert "something broke" in result["error"]
+
+    def test_network_error_returns_error(self, mocker: MockerFixture) -> None:
+        """Non-HTTP exceptions (socket timeout, OSError) are caught."""
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=OSError("Connection refused"))
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener)
+
+        assert "error" in result
+        assert "network error" in result["error"]
+        assert "Connection refused" in result["error"]
+
+    def test_no_jsessionid_cookie_returns_error(self, mocker: MockerFixture) -> None:
+        """HTTP 200 + empty body but no JSESSIONID cookie = failure."""
+        auth_resp = _make_http_response(body="")
+        opener = MagicMock()
+        opener.open = MagicMock(return_value=auth_resp)
+
+        # Empty cookie jar — no JSESSIONID
+        jar = MagicMock()
+        jar.__iter__ = MagicMock(return_value=iter([]))
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener, jar)
+
+        assert "error" in result
+        assert "No JSESSIONID cookie" in result["error"]

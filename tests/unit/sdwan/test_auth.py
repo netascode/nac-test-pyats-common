@@ -107,3 +107,73 @@ def _make_http_response(
         )
     )
     return resp
+
+
+# ===========================================================================
+# 1. Script body logic — happy path
+# ===========================================================================
+
+
+class TestAuthScriptHappyPath:
+    """Test successful authentication scenarios in the script body."""
+
+    def test_success_with_jsessionid_and_xsrf_token(
+        self, mocker: MockerFixture
+    ) -> None:
+        """HTTP 200 + empty body + JSESSIONID cookie + valid XSRF token."""
+        auth_resp = _make_http_response(body="")
+        token_resp = _make_http_response(
+            body="aabbccdd1122", content_type="application/json"
+        )
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=[auth_resp, token_resp])
+
+        cookie = _make_jsessionid_cookie("sess-xyz")
+        jar = MagicMock()
+        jar.__iter__ = MagicMock(return_value=iter([cookie]))
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener, jar)
+
+        assert result["jsessionid"] == "sess-xyz"
+        assert result["xsrf_token"] == "aabbccdd1122"
+
+    def test_success_via_302_redirect(self, mocker: MockerFixture) -> None:
+        """HTTP 302 redirect is treated as successful login."""
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            url="https://sdwan.example.com/j_security_check",
+            code=302,
+            msg="Found",
+            hdrs=MagicMock(),
+            fp=BytesIO(b""),
+        )
+        token_resp = _make_http_response(body="deadbeef", content_type="text/plain")
+        opener = MagicMock()
+        opener.open = MagicMock(side_effect=[http_err, token_resp])
+
+        cookie = _make_jsessionid_cookie("redir-session")
+        jar = MagicMock()
+        jar.__iter__ = MagicMock(return_value=iter([cookie]))
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener, jar)
+
+        assert result["jsessionid"] == "redir-session"
+        assert result["xsrf_token"] == "deadbeef"
+
+    def test_success_without_xsrf_token_pre_19_2(self, mocker: MockerFixture) -> None:
+        """Pre-19.2 SD-WAN Manager: XSRF token endpoint raises exception."""
+        auth_resp = _make_http_response(body="")
+        opener = MagicMock()
+        opener.open = MagicMock(
+            side_effect=[auth_resp, ConnectionError("not supported")]
+        )
+
+        cookie = _make_jsessionid_cookie("old-session")
+        jar = MagicMock()
+        jar.__iter__ = MagicMock(return_value=iter([cookie]))
+
+        result = _exec_script(mocker, _BASE_PARAMS, opener, jar)
+
+        assert result["jsessionid"] == "old-session"
+        assert result["xsrf_token"] is None

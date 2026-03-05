@@ -7,7 +7,8 @@ This module provides the SDWANDeviceResolver class, which extends
 BaseDeviceResolver to implement SD-WAN schema navigation.
 
 Device Fields Returned:
-    - hostname: System hostname from device_variables.system_hostname
+    - hostname: System hostname from device_variables.system_hostname (UX 1.0)
+               or device_variables.host_name (UX 2.0), falls back to chassis_id
     - host: Management IP address (CIDR stripped)
     - os: Always 'iosxe' (SD-WAN edges are IOS-XE based)
     - platform: Always 'sdwan' (for PyATS abstraction optimization)
@@ -42,7 +43,8 @@ class SDWANDeviceResolver(BaseDeviceResolver):
                 - chassis_id: "abc123"
                   management_ip_variable: "custom_mgmt_ip"  # Router override
                   device_variables:
-                    system_hostname: "router1"
+                    system_hostname: "router1"   # UX 1.0 (feature templates)
+                    host_name: "router1"         # UX 2.0 (configuration groups)
                     vpn511_int1_if_ipv4_address: "10.1.1.100/32"
                     custom_mgmt_ip: "10.2.2.200/32"
 
@@ -113,10 +115,12 @@ class SDWANDeviceResolver(BaseDeviceResolver):
         return str(chassis_id)
 
     def extract_hostname(self, device_data: dict[str, Any]) -> str:
-        """Extract hostname from device_variables.system_hostname.
+        """Extract hostname from device_variables.
 
-        Looks for system_hostname in the device_variables section.
-        Falls back to chassis_id if system_hostname is not available.
+        Checks for hostname in priority order:
+        1. system_hostname (UX 1.0 feature templates)
+        2. host_name (UX 2.0 configuration groups)
+        3. chassis_id (fallback with warning)
 
         Args:
             device_data: Router data dictionary from the data model.
@@ -126,13 +130,19 @@ class SDWANDeviceResolver(BaseDeviceResolver):
         """
         device_vars = device_data.get("device_variables", {})
 
+        # UX 1.0: system_hostname (feature templates)
         if "system_hostname" in device_vars:
             return str(device_vars["system_hostname"])
+
+        # UX 2.0: host_name (configuration groups)
+        if "host_name" in device_vars:
+            return str(device_vars["host_name"])
 
         # Fallback to chassis_id
         chassis_id = device_data.get("chassis_id", "unknown")
         logger.warning(
-            f"No system_hostname found for {chassis_id}, using chassis_id as hostname"
+            f"No system_hostname or host_name found for {chassis_id}, "
+            "using chassis_id as hostname"
         )
         return str(chassis_id)
 

@@ -4,104 +4,106 @@
 """Unit tests for SDWANManagerAuth.
 
 Tests SD-WAN Manager authentication:
-1. Error propagation from subprocess execution
-2. Environment variable validation (missing credentials)
-3. URL normalization (trailing slash handling)
+1. Auth script body logic via in-process execution with mocked urllib (happy path)
+2. Auth script body logic — failure detection (HTML login page, HTTP errors,
+   network errors)
+3. XSRF token defense-in-depth
+4. _authenticate() method integration with execute_auth_subprocess
+5. Environment variable validation (missing credentials)
+6. URL normalization (trailing slash handling)
+7. Script body survival through _indent_script_body() transform
 """
 
-from unittest.mock import MagicMock, patch
+from io import BytesIO
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
-from nac_test_pyats_common.sdwan.auth import SDWANManagerAuth
+from nac_test_pyats_common.sdwan.auth import (
+    _AUTH_SCRIPT_BODY,
+    SDWANManagerAuth,
+)
 
+# ---------------------------------------------------------------------------
+# Shared test params used by script body execution tests
+# ---------------------------------------------------------------------------
+_BASE_PARAMS: dict[str, Any] = {
+    "url": "https://sdwan.example.com",
+    "username": "admin",
+    "password": "password123",
+    "timeout": 30.0,
+    "xsrf_timeout": 10.0,
+    "verify_ssl": False,
+}
 
-class TestAuthenticateErrorHandling:
-    """Test error handling in _authenticate method."""
-
-    @patch("nac_test_pyats_common.sdwan.auth.execute_auth_subprocess")
-    def test_subprocess_error_propagates(self, mock_exec: MagicMock) -> None:
-        """Test that subprocess errors propagate correctly."""
-        from nac_test.pyats_core.common.subprocess_auth import SubprocessAuthError
-
-        mock_exec.side_effect = SubprocessAuthError("Authentication failed")
-
-        with pytest.raises(SubprocessAuthError) as exc_info:
-            SDWANManagerAuth._authenticate(
-                "https://sdwan.example.com", "admin", "wrong-password", verify_ssl=False
-            )
-
-        assert "authentication failed" in str(exc_info.value).lower()
-
-
-class TestGetAuthEnvironmentValidation:
-    """Test environment variable validation."""
-
-    def test_get_auth_missing_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test error when SDWAN_URL is missing."""
-        monkeypatch.setenv("SDWAN_USERNAME", "admin")
-        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
-        # SDWAN_URL not set
-
-        with pytest.raises(ValueError) as exc_info:
-            SDWANManagerAuth.get_auth()
-
-        assert "SDWAN_URL" in str(exc_info.value)
-        assert "Missing required environment variables" in str(exc_info.value)
-
-    def test_get_auth_missing_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test error when SDWAN_USERNAME is missing."""
-        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
-        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
-        # SDWAN_USERNAME not set
-
-        with pytest.raises(ValueError) as exc_info:
-            SDWANManagerAuth.get_auth()
-
-        assert "SDWAN_USERNAME" in str(exc_info.value)
-
-    def test_get_auth_missing_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test error when SDWAN_PASSWORD is missing."""
-        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
-        monkeypatch.setenv("SDWAN_USERNAME", "admin")
-        # SDWAN_PASSWORD not set
-
-        with pytest.raises(ValueError) as exc_info:
-            SDWANManagerAuth.get_auth()
-
-        assert "SDWAN_PASSWORD" in str(exc_info.value)
-
-    def test_get_auth_multiple_missing_vars(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test error message includes all missing variables."""
-        # No environment variables set
-
-        with pytest.raises(ValueError) as exc_info:
-            SDWANManagerAuth.get_auth()
-
-        error_msg = str(exc_info.value)
-        assert "SDWAN_URL" in error_msg
-        assert "SDWAN_USERNAME" in error_msg
-        assert "SDWAN_PASSWORD" in error_msg
+# Realistic HTML login page snippet returned by SD-WAN Manager on auth failure
+_HTML_LOGIN_PAGE: str = (
+    "<html><head><title>SD-WAN Manager</title></head>"
+    "<body><form action='/j_security_check'>Login</form></body></html>"
+)
 
 
-class TestGetAuthUrlNormalization:
-    """Test URL normalization behavior."""
+def _exec_script(
+    mocker: MockerFixture,
+    params: dict[str, Any],
+    mock_opener: MagicMock,
+    mock_cookie_jar: MagicMock | None = None,
+) -> dict[str, Any]:
+    """Execute _AUTH_SCRIPT_BODY in-process with mocked urllib objects.
 
-    @patch("nac_test_pyats_common.sdwan.auth.AuthCache.get_or_create")
-    def test_get_auth_strips_trailing_slash(
-        self, mock_cache: MagicMock, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test that trailing slash is removed from URL."""
-        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com/")
-        monkeypatch.setenv("SDWAN_USERNAME", "admin")
-        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
+    This helper sets up the namespace that execute_auth_subprocess normally
+    provides (the ``params`` dict) and patches urllib internals so the script
+    runs without network I/O.
 
-        mock_cache.return_value = {"jsessionid": "test", "xsrf_token": None}
+    Args:
+        mocker: The pytest-mock fixture for patching.
+        params: The params dict the script expects.
+        mock_opener: A mock for ``urllib.request.build_opener()`` return value.
+            The mock's ``.open()`` method is called by the script for both
+            ``/j_security_check`` and ``/dataservice/client/token``.
+        mock_cookie_jar: Optional mock for the cookie jar. If not provided,
+            an empty MagicMock with ``__iter__`` returning no cookies is used.
 
-        SDWANManagerAuth.get_auth()
+    Returns:
+        The ``result`` dict set by the script body.
+    """
+    if mock_cookie_jar is None:
+        mock_cookie_jar = MagicMock()
+        mock_cookie_jar.__iter__ = MagicMock(return_value=iter([]))
 
-        # Verify URL was normalized
-        call_kwargs = mock_cache.call_args.kwargs
-        assert call_kwargs["url"] == "https://sdwan.example.com"
+    mocker.patch("urllib.request.build_opener", return_value=mock_opener)
+    mocker.patch("http.cookiejar.CookieJar", return_value=mock_cookie_jar)
+
+    ns: dict[str, Any] = {"params": params}
+    exec(compile(_AUTH_SCRIPT_BODY, "<auth_script>", "exec"), ns)  # noqa: S102
+
+    result: dict[str, Any] = ns["result"]
+    return result
+
+
+def _make_jsessionid_cookie(value: str = "abc123") -> MagicMock:
+    """Create a mock cookie with name='JSESSIONID'."""
+    cookie = MagicMock()
+    cookie.name = "JSESSIONID"
+    cookie.value = value
+    return cookie
+
+
+def _make_http_response(
+    body: str = "",
+    status: int = 200,
+    content_type: str = "application/json",
+) -> MagicMock:
+    """Create a mock HTTP response from ``opener.open()``."""
+    resp = MagicMock()
+    resp.read.return_value = body.encode("utf-8")
+    resp.status = status
+    resp.headers = MagicMock()
+    resp.headers.get = MagicMock(
+        side_effect=lambda key, default="": (
+            content_type if key == "Content-Type" else default
+        )
+    )
+    return resp

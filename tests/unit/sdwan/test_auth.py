@@ -413,3 +413,82 @@ class TestAuthenticateMethod:
 
         assert result == {"jsessionid": "sess-old", "xsrf_token": None}
         assert ttl == 1800
+
+
+# ===========================================================================
+# 5. get_auth() — environment variable validation
+# ===========================================================================
+
+
+class TestGetAuthEnvironmentValidation:
+    """Test environment variable validation."""
+
+    def test_get_auth_missing_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Error when SDWAN_URL is missing."""
+        monkeypatch.setenv("SDWAN_USERNAME", "admin")
+        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
+
+        with pytest.raises(ValueError) as exc_info:
+            SDWANManagerAuth.get_auth()
+
+        assert "SDWAN_URL" in str(exc_info.value)
+        assert "Missing required environment variables" in str(exc_info.value)
+
+    def test_get_auth_missing_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Error when SDWAN_USERNAME is missing."""
+        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
+        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
+
+        with pytest.raises(ValueError) as exc_info:
+            SDWANManagerAuth.get_auth()
+
+        assert "SDWAN_USERNAME" in str(exc_info.value)
+
+    def test_get_auth_missing_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Error when SDWAN_PASSWORD is missing."""
+        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
+        monkeypatch.setenv("SDWAN_USERNAME", "admin")
+
+        with pytest.raises(ValueError) as exc_info:
+            SDWANManagerAuth.get_auth()
+
+        assert "SDWAN_PASSWORD" in str(exc_info.value)
+
+    def test_get_auth_multiple_missing_vars(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Error message includes all missing variables."""
+        with pytest.raises(ValueError) as exc_info:
+            SDWANManagerAuth.get_auth()
+
+        error_msg = str(exc_info.value)
+        assert "SDWAN_URL" in error_msg
+        assert "SDWAN_USERNAME" in error_msg
+        assert "SDWAN_PASSWORD" in error_msg
+
+
+# ===========================================================================
+# 6. get_auth() — URL normalization
+# ===========================================================================
+
+
+class TestGetAuthUrlNormalization:
+    """Test URL normalization behavior."""
+
+    def test_get_auth_strips_trailing_slash(
+        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Trailing slash is removed from URL."""
+        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com/")
+        monkeypatch.setenv("SDWAN_USERNAME", "admin")
+        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
+
+        mock_cache = mocker.patch(
+            "nac_test_pyats_common.sdwan.auth.AuthCache.get_or_create"
+        )
+        mock_cache.return_value = {"jsessionid": "test", "xsrf_token": None}
+
+        SDWANManagerAuth.get_auth()
+
+        call_kwargs = mock_cache.call_args.kwargs
+        assert call_kwargs["url"] == "https://sdwan.example.com"

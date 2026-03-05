@@ -41,6 +41,135 @@ XSRF_TOKEN_FETCH_TIMEOUT_SECONDS: float = 10.0
 # HTTP timeout for authentication request
 AUTH_REQUEST_TIMEOUT_SECONDS: float = 30.0
 
+# Authentication script body executed in a subprocess via execute_auth_subprocess.
+# Extracted as a module-level constant so unit tests can compile and execute it
+# directly with mocked urllib, closing the test gap identified in PR #29 review.
+#
+# Contract:
+#   Input:  `params` dict with keys: url, username, password, timeout,
+#           xsrf_timeout, verify_ssl
+#   Output: `result` dict with either:
+#           - {"jsessionid": str, "xsrf_token": str | None}  (success)
+#           - {"error": str}                                   (failure)
+_AUTH_SCRIPT_BODY: str = """
+import http.cookiejar
+import ssl
+import urllib.parse
+import urllib.request
+
+url = params["url"]
+username = params["username"]
+password = params["password"]
+timeout = params["timeout"]
+xsrf_timeout = params["xsrf_timeout"]
+verify_ssl = params["verify_ssl"]
+
+# Create SSL context
+ssl_context = ssl.create_default_context()
+if not verify_ssl:
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+# Create cookie jar and opener
+cookie_jar = http.cookiejar.CookieJar()
+https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+cookie_handler = urllib.request.HTTPCookieProcessor(cookie_jar)
+opener = urllib.request.build_opener(https_handler, cookie_handler)
+
+# Step 1: Form-based login to /j_security_check
+auth_data = urllib.parse.urlencode({
+    "j_username": username,
+    "j_password": password
+}).encode("utf-8")
+
+auth_request = urllib.request.Request(
+    f"{url}/j_security_check",
+    data=auth_data,
+    headers={"Content-Type": "application/x-www-form-urlencoded"},
+    method="POST"
+)
+
+auth_body = None
+
+try:
+    auth_response = opener.open(auth_request, timeout=timeout)
+    auth_body = auth_response.read().decode("utf-8", errors="replace")
+except urllib.error.HTTPError as e:
+    if e.code == 302:
+        # 302 redirect is expected on successful login
+        auth_body = ""
+    elif e.code in (401, 403):
+        # Defensive: SD-WAN Manager currently returns 200+HTML for bad creds,
+        # but if Cisco ever fixes the API to return proper HTTP errors, handle
+        # them gracefully instead of falling through to the HTML check.
+        result = {
+            "error": (
+                f"Authentication failed - HTTP {e.code}: {e.reason}. "
+                "Verify SDWAN_USERNAME and SDWAN_PASSWORD are correct."
+            )
+        }
+    else:
+        # Other HTTP errors (500, 502, etc.) - server/network issue, not creds
+        error_body = e.read().decode("utf-8", errors="replace") if e.fp else ""
+        err_snippet = error_body[:200]
+        result = {
+            "error": (
+                f"Authentication request failed - HTTP {e.code}: {e.reason}. "
+                f"{err_snippet}"
+            ).strip()
+        }
+except Exception as e:
+    # Network-level errors (socket.timeout, URLError, SSLError, OSError, etc.)
+    result = {
+        "error": f"Authentication request failed - network error: {e}"
+    }
+
+if auth_body is not None:
+    # SD-WAN Manager returns HTTP 200 with an HTML login page on auth failure
+    # (it never returns 401/403). Successful login returns HTTP 200 with an empty body.
+    if auth_body and "<html" in auth_body.lower():
+        result = {
+            "error": (
+                "Authentication failed - SD-WAN Manager returned the login page. "
+                "Verify SDWAN_USERNAME and SDWAN_PASSWORD are correct."
+            )
+        }
+    else:
+        # Extract JSESSIONID from cookies
+        jsessionid = None
+        for cookie in cookie_jar:
+            if cookie.name == "JSESSIONID":
+                jsessionid = cookie.value
+                break
+
+        if jsessionid is None:
+            result = {
+                "error": (
+                    "No JSESSIONID cookie received - authentication may have failed"
+                )
+            }
+        else:
+            # Step 2: Fetch XSRF token (required for SDWAN Manager 19.2+)
+            xsrf_token = None
+            try:
+                token_request = urllib.request.Request(
+                    f"{url}/dataservice/client/token",
+                    headers={"Cookie": f"JSESSIONID={jsessionid}"},
+                    method="GET"
+                )
+                token_response = opener.open(token_request, timeout=xsrf_timeout)
+                content_type = token_response.headers.get("Content-Type", "")
+                if token_response.status == 200 and "text/html" not in content_type:
+                    token_body = token_response.read().decode("utf-8").strip()
+                    # Defense-in-depth: real XSRF tokens are hex strings, not HTML
+                    if token_body and "<html" not in token_body.lower():
+                        xsrf_token = token_body
+            except Exception:
+                pass  # Pre-19.2 versions do not support XSRF tokens
+
+            result = {"jsessionid": jsessionid, "xsrf_token": xsrf_token}
+"""
+
 
 class SDWANManagerAuth:
     """SDWAN Manager authentication implementation with session caching.
@@ -118,81 +247,8 @@ class SDWANManagerAuth:
             "verify_ssl": verify_ssl,
         }
 
-        # SDWAN-specific authentication logic
-        # This script assumes `params` dict is already loaded by execute_auth_subprocess
-        auth_script_body = """
-import http.cookiejar
-import ssl
-import urllib.parse
-import urllib.request
-
-url = params["url"]
-username = params["username"]
-password = params["password"]
-timeout = params["timeout"]
-xsrf_timeout = params["xsrf_timeout"]
-verify_ssl = params["verify_ssl"]
-
-# Create SSL context
-ssl_context = ssl.create_default_context()
-if not verify_ssl:
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-
-# Create cookie jar and opener
-cookie_jar = http.cookiejar.CookieJar()
-https_handler = urllib.request.HTTPSHandler(context=ssl_context)
-cookie_handler = urllib.request.HTTPCookieProcessor(cookie_jar)
-opener = urllib.request.build_opener(https_handler, cookie_handler)
-
-# Step 1: Form-based login to /j_security_check
-auth_data = urllib.parse.urlencode({
-    "j_username": username,
-    "j_password": password
-}).encode("utf-8")
-
-auth_request = urllib.request.Request(
-    f"{url}/j_security_check",
-    data=auth_data,
-    headers={"Content-Type": "application/x-www-form-urlencoded"},
-    method="POST"
-)
-
-try:
-    opener.open(auth_request, timeout=timeout)
-except urllib.error.HTTPError as e:
-    if e.code != 302:  # 302 redirect is expected on successful login
-        raise
-
-# Extract JSESSIONID from cookies
-jsessionid = None
-for cookie in cookie_jar:
-    if cookie.name == "JSESSIONID":
-        jsessionid = cookie.value
-        break
-
-if jsessionid is None:
-    result = {"error": "No JSESSIONID cookie received - authentication may have failed"}
-else:
-    # Step 2: Fetch XSRF token (required for SDWAN Manager 19.2+)
-    xsrf_token = None
-    try:
-        token_request = urllib.request.Request(
-            f"{url}/dataservice/client/token",
-            headers={"Cookie": f"JSESSIONID={jsessionid}"},
-            method="GET"
-        )
-        token_response = opener.open(token_request, timeout=xsrf_timeout)
-        if token_response.status == 200:
-            xsrf_token = token_response.read().decode("utf-8").strip()
-    except Exception:
-        pass  # Pre-19.2 versions do not support XSRF tokens
-
-    result = {"jsessionid": jsessionid, "xsrf_token": xsrf_token}
-"""
-
         # Execute authentication in subprocess (fork-safe on macOS)
-        auth_result = execute_auth_subprocess(auth_params, auth_script_body)
+        auth_result = execute_auth_subprocess(auth_params, _AUTH_SCRIPT_BODY)
 
         return {
             "jsessionid": auth_result["jsessionid"],

@@ -372,7 +372,10 @@ class BaseDeviceResolver(ABC):
 
         Example (SD-WAN):
             >>> def extract_hostname(self, device_data):
-            ...     return device_data["device_variables"]["system_hostname"]
+            ...     device_vars = device_data.get("device_variables", {})
+            ...     if "system_hostname" in device_vars:
+            ...         return str(device_vars["system_hostname"])
+            ...     return str(device_vars.get("host_name", "unknown"))
         """
         ...
 

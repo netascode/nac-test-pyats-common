@@ -191,11 +191,38 @@ class TestDeviceFieldExtraction:
         resolver = SDWANDeviceResolver(sample_data_model)
         device_data = {
             "chassis_id": "FALLBACK123",
-            "device_variables": {},  # No system_hostname
+            "device_variables": {},  # No system_hostname or host_name
         }
 
         hostname = resolver.extract_hostname(device_data)
         assert hostname == "FALLBACK123"
+
+    def test_extract_hostname_from_host_name(self) -> None:
+        """Test hostname extraction from host_name (UX 2.0 configuration groups)."""
+        resolver = SDWANDeviceResolver({})
+        device_data = {
+            "chassis_id": "UX2_DEVICE",
+            "device_variables": {
+                "host_name": "ux2-router1",  # UX 2.0 field
+            },
+        }
+
+        hostname = resolver.extract_hostname(device_data)
+        assert hostname == "ux2-router1"
+
+    def test_extract_hostname_system_hostname_takes_precedence(self) -> None:
+        """Test that system_hostname takes precedence over host_name."""
+        resolver = SDWANDeviceResolver({})
+        device_data = {
+            "chassis_id": "BOTH_FIELDS",
+            "device_variables": {
+                "system_hostname": "ux1-router",  # UX 1.0 - should win
+                "host_name": "ux2-router",  # UX 2.0 - should be ignored
+            },
+        }
+
+        hostname = resolver.extract_hostname(device_data)
+        assert hostname == "ux1-router"
 
     def test_extract_os_platform_type(self, sample_data_model: dict[str, Any]) -> None:
         """Test OS and platform info extraction."""
@@ -232,7 +259,8 @@ class TestManagementIPExtraction:
                         "routers": [
                             {
                                 "chassis_id": "ABC123",
-                                "management_ip_variable": "custom_mgmt_ip",  # Router override
+                                # Router-level override
+                                "management_ip_variable": "custom_mgmt_ip",
                                 "device_variables": {
                                     "system_hostname": "router1",
                                     "vpn511_int1_if_ipv4_address": "10.1.1.1/32",
@@ -277,7 +305,8 @@ class TestManagementIPExtraction:
                                 "chassis_id": "ABC123",
                                 "device_variables": {
                                     "system_hostname": "router1",
-                                    "vpn511_int1_if_ipv4_address": "10.1.1.1",  # No CIDR
+                                    # No CIDR notation
+                                    "vpn511_int1_if_ipv4_address": "10.1.1.1",
                                 },
                             }
                         ],
@@ -481,6 +510,45 @@ class TestFullResolutionFlow:
         assert "DEF456" in chassis_ids  # Site 1
         assert "GHI789" in chassis_ids  # Site 2
 
+    def test_full_resolution_ux2_host_name(
+        self,
+        mock_credentials: None,
+    ) -> None:
+        """Test complete device resolution with UX 2.0 host_name field."""
+        data_model = {
+            "sdwan": {
+                "management_ip_variable": "vpn511_int1_if_ipv4_address",
+                "sites": [
+                    {
+                        "name": "ux2_site",
+                        "routers": [
+                            {
+                                "chassis_id": "UX2_CHASSIS_001",
+                                "device_variables": {
+                                    "host_name": "ux2-edge-router",  # UX 2.0 field
+                                    "vpn511_int1_if_ipv4_address": "10.10.10.1/32",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            }
+        }
+
+        resolver = SDWANDeviceResolver(data_model)
+        devices = resolver.get_resolved_inventory()
+
+        # Should resolve the router
+        assert len(devices) == 1
+
+        device = devices[0]
+        assert device["hostname"] == "ux2-edge-router"
+        assert device["host"] == "10.10.10.1"
+        assert device["device_id"] == "UX2_CHASSIS_001"
+        assert device["os"] == "iosxe"
+        assert device["platform"] == "sdwan"
+        assert device["type"] == "router"
+
 
 class TestErrorHandlingAndSkippedDevices:
     """Test error handling and skipped device tracking."""
@@ -591,7 +659,7 @@ class TestErrorHandlingAndSkippedDevices:
                             {
                                 "chassis_id": "ABC123",
                                 "device_variables": {
-                                    # No system_hostname
+                                    # No system_hostname or host_name
                                     "vpn511_int1_if_ipv4_address": "10.1.1.1/32",
                                 },
                             }
@@ -601,7 +669,10 @@ class TestErrorHandlingAndSkippedDevices:
             }
         }
 
-        with caplog.at_level("WARNING"):
+        with caplog.at_level(
+            "WARNING",
+            logger="nac_test_pyats_common.sdwan.device_resolver",
+        ):
             resolver = SDWANDeviceResolver(data_model)
             devices = resolver.get_resolved_inventory()
 
@@ -609,6 +680,7 @@ class TestErrorHandlingAndSkippedDevices:
         assert len(devices) == 1
         assert devices[0]["hostname"] == "ABC123"
 
-        # Check for warning log
-        assert "No system_hostname found" in caplog.text
+        # Check for warning log mentioning both field names
+        assert "system_hostname" in caplog.text
+        assert "host_name" in caplog.text
         assert "ABC123" in caplog.text

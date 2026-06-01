@@ -900,7 +900,8 @@ nac-test's controller detection. If the matched credential set has
 **Auth Flow (Token — 20.18+):**
 ```
 No network call required.
-Headers: Authorization: Bearer {SDWAN_API_TOKEN}
+JWT payload decoded to extract CSRF token.
+Headers: Authorization: Bearer {SDWAN_API_TOKEN}, X-XSRF-TOKEN: {csrf from JWT}
 ```
 
 **Auth Flow (Session — legacy):**
@@ -1093,8 +1094,9 @@ class SDWANManagerAuth:
 
     @classmethod
     def _get_token_auth(cls) -> dict[str, Any]:
-        """Token auth: reads SDWAN_API_TOKEN, returns immediately."""
-        # Returns {"auth_method": "token", "api_token": <value>}
+        """Token auth: reads SDWAN_API_TOKEN, decodes JWT for CSRF."""
+        # Decodes JWT payload to extract csrf field
+        # Returns {"auth_method": "token", "api_token": <value>, "csrf_token": <csrf>}
 
     @classmethod
     def _get_session_auth(cls) -> dict[str, Any]:

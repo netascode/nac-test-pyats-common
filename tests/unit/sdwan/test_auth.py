@@ -425,6 +425,8 @@ class TestGetAuthEnvironmentValidation:
 
     def test_get_auth_missing_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Error when SDWAN_URL is missing."""
+        monkeypatch.delenv("SDWAN_URL", raising=False)
+        monkeypatch.delenv("SDWAN_API_TOKEN", raising=False)
         monkeypatch.setenv("SDWAN_USERNAME", "admin")
         monkeypatch.setenv("SDWAN_PASSWORD", "password123")
 
@@ -436,6 +438,7 @@ class TestGetAuthEnvironmentValidation:
 
     def test_get_auth_missing_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Error when SDWAN_USERNAME is missing."""
+        monkeypatch.delenv("SDWAN_API_TOKEN", raising=False)
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_PASSWORD", "password123")
 
@@ -446,6 +449,7 @@ class TestGetAuthEnvironmentValidation:
 
     def test_get_auth_missing_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Error when SDWAN_PASSWORD is missing."""
+        monkeypatch.delenv("SDWAN_API_TOKEN", raising=False)
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_USERNAME", "admin")
 
@@ -458,6 +462,11 @@ class TestGetAuthEnvironmentValidation:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Error message includes all missing variables."""
+        monkeypatch.delenv("SDWAN_URL", raising=False)
+        monkeypatch.delenv("SDWAN_API_TOKEN", raising=False)
+        monkeypatch.delenv("SDWAN_USERNAME", raising=False)
+        monkeypatch.delenv("SDWAN_PASSWORD", raising=False)
+
         with pytest.raises(ValueError) as exc_info:
             SDWANManagerAuth.get_auth()
 
@@ -528,14 +537,23 @@ class TestScriptBodyIndentSurvival:
 class TestTokenAuth:
     """Test token-based authentication path (SD-WAN Manager 20.18+)."""
 
-    def test_token_auth_returns_api_token(
+    # Valid JWT with csrf field in payload for testing.
+    # Payload: {"sub": "admin", "csrf": "DEADBEEF1234", "isAPIKey": true}
+    VALID_JWT = (
+        "eyJ0eXAiOiJqd3QiLCJhbGciOiJSUzI1NiJ9"
+        ".eyJzdWIiOiJhZG1pbiIsImNzcmYiOiJERUFEQkVFRjEyMzQiLCJpc0FQSUtleSI6dHJ1ZX0"
+        ".fake-signature"
+    )
+    EXPECTED_CSRF = "DEADBEEF1234"
+
+    def test_token_auth_returns_api_token_and_csrf(
         self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When auth_method=token, returns api_token directly without login."""
+        """When auth_method=token, returns api_token and csrf_token from JWT."""
         from nac_test.utils.controller import CredentialSet
 
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
-        monkeypatch.setenv("SDWAN_API_TOKEN", "my-secret-token")
+        monkeypatch.setenv("SDWAN_API_TOKEN", self.VALID_JWT)
 
         mock_matched = mocker.patch(
             "nac_test.utils.controller.get_matched_credential_set"
@@ -549,7 +567,8 @@ class TestTokenAuth:
         result = SDWANManagerAuth.get_auth()
 
         assert result["auth_method"] == "token"
-        assert result["api_token"] == "my-secret-token"
+        assert result["api_token"] == self.VALID_JWT
+        assert result["csrf_token"] == self.EXPECTED_CSRF
 
     def test_token_auth_missing_token_raises(
         self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
@@ -558,6 +577,7 @@ class TestTokenAuth:
         from nac_test.utils.controller import CredentialSet
 
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
+        monkeypatch.delenv("SDWAN_API_TOKEN", raising=False)
 
         mock_matched = mocker.patch(
             "nac_test.utils.controller.get_matched_credential_set"
@@ -579,6 +599,7 @@ class TestTokenAuth:
         """Error when SDWAN_URL is missing in token mode."""
         from nac_test.utils.controller import CredentialSet
 
+        monkeypatch.delenv("SDWAN_URL", raising=False)
         monkeypatch.setenv("SDWAN_API_TOKEN", "my-secret-token")
 
         mock_matched = mocker.patch(
@@ -602,7 +623,7 @@ class TestTokenAuth:
         from nac_test.utils.controller import CredentialSet
 
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
-        monkeypatch.setenv("SDWAN_API_TOKEN", "my-secret-token")
+        monkeypatch.setenv("SDWAN_API_TOKEN", self.VALID_JWT)
 
         mock_matched = mocker.patch(
             "nac_test.utils.controller.get_matched_credential_set"
@@ -624,6 +645,59 @@ class TestTokenAuth:
 
         mock_cache.assert_not_called()
         mock_subprocess.assert_not_called()
+
+    def test_token_auth_invalid_jwt_raises(
+        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Error when SDWAN_API_TOKEN is not a valid JWT (no dots)."""
+        from nac_test.utils.controller import CredentialSet
+
+        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
+        monkeypatch.setenv("SDWAN_API_TOKEN", "not-a-jwt")
+
+        mock_matched = mocker.patch(
+            "nac_test.utils.controller.get_matched_credential_set"
+        )
+        mock_matched.return_value = CredentialSet(
+            env_vars=["SDWAN_URL", "SDWAN_API_TOKEN"],
+            label="API Token (20.18+)",
+            auth_method="token",
+        )
+
+        with pytest.raises(ValueError, match="not a valid JWT"):
+            SDWANManagerAuth.get_auth()
+
+    def test_token_auth_missing_csrf_raises(
+        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Error when JWT payload has no 'csrf' field."""
+        import base64
+        import json
+
+        from nac_test.utils.controller import CredentialSet
+
+        # JWT with payload {"sub": "admin"} — no csrf field
+        payload = (
+            base64.urlsafe_b64encode(json.dumps({"sub": "admin"}).encode())
+            .decode()
+            .rstrip("=")
+        )
+        no_csrf_jwt = f"eyJhbGciOiJSUzI1NiJ9.{payload}.fake-sig"
+
+        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
+        monkeypatch.setenv("SDWAN_API_TOKEN", no_csrf_jwt)
+
+        mock_matched = mocker.patch(
+            "nac_test.utils.controller.get_matched_credential_set"
+        )
+        mock_matched.return_value = CredentialSet(
+            env_vars=["SDWAN_URL", "SDWAN_API_TOKEN"],
+            label="API Token (20.18+)",
+            auth_method="token",
+        )
+
+        with pytest.raises(ValueError, match="missing 'csrf' field"):
+            SDWANManagerAuth.get_auth()
 
     def test_session_auth_when_no_matched_credential_set(
         self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch

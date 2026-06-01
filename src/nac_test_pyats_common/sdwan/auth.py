@@ -4,13 +4,23 @@
 """SDWAN Manager authentication implementation for Cisco SD-WAN.
 
 This module provides authentication functionality for Cisco SDWAN Manager (formerly
-vManage), which manages the software-defined WAN fabric. The authentication mechanism
-uses form-based login with JSESSIONID cookie and optional XSRF token for CSRF
-protection.
+vManage), which manages the software-defined WAN fabric. Two authentication
+methods are supported:
 
-The module implements a two-tier API design:
-1. _authenticate() - Low-level method that performs direct SDWAN Manager authentication
-2. get_auth() - High-level method that leverages caching for efficient token reuse
+1. **Token auth** (20.18+): JWT-based Bearer authentication using a pre-generated
+   API token. The CSRF token is extracted from the JWT payload and must be sent
+   as the X-XSRF-TOKEN header alongside the Bearer Authorization header.
+2. **Session auth** (all versions): Form-based login with JSESSIONID cookie and
+   optional XSRF token for CSRF protection.
+
+The auth method is determined by `get_matched_credential_set()` from nac-test's
+controller detection module.
+
+The module implements a multi-tier API design:
+1. _authenticate() - Low-level method that performs direct SDWAN Manager session authentication
+2. _get_token_auth() - Low-level method for JWT-based token authentication
+3. _get_session_auth() - Low-level method for session-based authentication
+4. get_auth() - High-level method that routes to the appropriate auth method
 
 This design ensures efficient session management by reusing valid sessions and only
 re-authenticating when necessary, reducing unnecessary API calls to the SDWAN Manager.
@@ -22,6 +32,8 @@ Note on Fork Safety:
     that work correctly after fork().
 """
 
+import base64
+import json
 import os
 from typing import Any
 
@@ -333,14 +345,19 @@ class SDWANManagerAuth:
     def _get_token_auth(cls) -> dict[str, Any]:
         """Get token-based authentication data (SD-WAN Manager 20.18+).
 
-        Reads SDWAN_API_TOKEN from the environment and returns it for use
-        as a Bearer token. No network call or caching required.
+        Reads SDWAN_API_TOKEN from the environment and decodes the JWT payload
+        to extract the CSRF token. No network call or caching required.
+
+        The JWT payload is expected to contain a 'csrf' field which must be
+        sent as the X-XSRF-TOKEN header alongside the Bearer Authorization
+        header on API requests.
 
         Returns:
-            Dictionary with auth_method="token" and the api_token value.
+            Dictionary with auth_method="token", api_token, and csrf_token.
 
         Raises:
-            ValueError: If SDWAN_URL or SDWAN_API_TOKEN is not set.
+            ValueError: If SDWAN_URL or SDWAN_API_TOKEN is not set, or if the
+                token is not a valid JWT or is missing the 'csrf' field.
         """
         url = os.environ.get("SDWAN_URL")
         api_token = os.environ.get("SDWAN_API_TOKEN")
@@ -355,7 +372,37 @@ class SDWANManagerAuth:
                 f"Missing required environment variables: {', '.join(missing_vars)}"
             )
 
-        return {"auth_method": "token", "api_token": api_token}
+        # Decode JWT payload to extract CSRF token
+        parts = api_token.split(".")  # type: ignore[union-attr]
+        if len(parts) != 3:  # noqa: PLR2004
+            raise ValueError(
+                "SDWAN_API_TOKEN is not a valid JWT: expected 3 dot-separated "
+                "parts (header.payload.signature), "
+                f"got {len(parts)}."
+            )
+        try:
+            payload_b64 = parts[1]
+            # Add padding for base64 decoding
+            payload_b64 += "=" * (-len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        except Exception as e:
+            raise ValueError(
+                "Failed to decode SDWAN_API_TOKEN: not a valid JWT. "
+                "Verify the token format (header.payload.signature)."
+            ) from e
+
+        csrf_token = payload.get("csrf", "")
+        if not csrf_token:
+            raise ValueError(
+                "SDWAN_API_TOKEN is missing 'csrf' field in JWT payload. "
+                "Verify the token was generated correctly."
+            )
+
+        return {
+            "auth_method": "token",
+            "api_token": api_token,
+            "csrf_token": csrf_token,
+        }
 
     @classmethod
     def _get_session_auth(cls) -> dict[str, Any]:

@@ -135,6 +135,7 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         if auth_method == "token":
             # Bearer token auth (SD-WAN Manager 20.18+)
             headers["Authorization"] = f"Bearer {self.auth_data['api_token']}"
+            headers["X-XSRF-TOKEN"] = self.auth_data["csrf_token"]
         else:
             # Session-based auth (JSESSIONID + optional XSRF token)
             headers["Cookie"] = f"JSESSIONID={self.auth_data['jsessionid']}"

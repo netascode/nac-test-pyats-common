@@ -198,11 +198,12 @@ Each architecture requires specific environment variables for authentication:
 
 **Token auth (20.18+):**
 - `SDWAN_URL` - SD-WAN Manager URL
-- `SDWAN_API_TOKEN` - API token for Bearer authentication
+- `SDWAN_API_TOKEN` - API token (JWT) for Bearer authentication
 
 The auth method is determined automatically by nac-test's credential set detection.
-If `SDWAN_API_TOKEN` is set (and `SDWAN_URL`), token auth is used. Otherwise,
-username/password session auth is used.
+If `SDWAN_API_TOKEN` is set (and `SDWAN_URL`), token auth is used — the JWT payload
+is decoded to extract the CSRF token, which is sent as the `X-XSRF-TOKEN` header
+alongside `Authorization: Bearer`. Otherwise, username/password session auth is used.
 
 ### ACI
 - `APIC_URL` - APIC URL

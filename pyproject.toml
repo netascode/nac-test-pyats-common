@@ -1,6 +1,6 @@
 [project]
 name = "nac-test-pyats-common"
-version = "0.3.0"
+version = "0.3.1"
 description = "Architecture adapters for Network as Code (NaC) PyATS testing - auth classes, test base classes, and device resolvers"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,22 +27,22 @@ classifiers = [
 keywords = ["cisco", "network", "testing", "pyats", "nac", "aci", "sdwan", "catalyst-center"]
 
 dependencies = [
-    "filelock>=3.20.1",
-    "httpx>=0.28", # HTTP client for auth
-    "nac-test>=2.0.0a1",
+    "filelock>=3.25.2",
+    "httpx~=0.28",  # HTTP client for auth
+    "nac-test>=2.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-cov>=4.0",
+    "pytest>=9.0.3",
+    "pytest-cov~=7.1",
     "pytest-asyncio>=0.23",
-    "pytest-mock>=3.14",
+    "pytest-mock>=3.15.1",
     "respx>=0.21",       # For mocking httpx
-    "ruff>=0.4",
-    "mypy>=1.10",
-    "pre-commit>=3.0",
-    "bandit[toml]>=1.8.6",
+    "ruff>=0.15.10",
+    "mypy>=1.17.1",
+    "pre-commit>=4.6.0",
+    "bandit[toml]>=1.9.4",
 ]
 
 [project.urls]
@@ -50,6 +50,19 @@ Homepage = "https://github.com/netascode/nac-test-pyats-common"
 Documentation = "https://github.com/netascode/nac-test-pyats-common"
 Repository = "https://github.com/netascode/nac-test-pyats-common"
 Issues = "https://github.com/netascode/nac-test-pyats-common/issues"
+
+[tool.uv]
+# pyats/genie 26.4 misses manylinux2014_x86_64 for py310, so uv sync fails.
+# workaround to address this until the wheels are fixed in pyats/genie 26.4 or later.
+constraint-dependencies = [
+    "pyats<26.4",
+    "genie<26.4",
+]
+# pysnmp==6.1.4 (pulled in by genie-libs-sdk) incorrectly declares pytest-cov<5 as a
+# runtime dependency. Override it so we can use current pytest-cov releases.
+override-dependencies = [
+    "pytest-cov>=7.1",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -149,5 +162,5 @@ omit = ["*/__main__.py"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.14.10",
+    "ruff>=0.15.10",
 ]

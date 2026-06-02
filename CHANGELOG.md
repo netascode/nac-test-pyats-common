@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **SD-WAN Token Authentication Support** ([#TBD](https://github.com/netascode/nac-test-pyats-common/pull/TBD))
+- **SD-WAN Token Authentication Support** ([#33](https://github.com/netascode/nac-test-pyats-common/pull/33))
   - `SDWANManagerAuth.get_auth()` now consults `get_matched_credential_set()` from nac-test
     to determine authentication mechanism (token vs session)
   - **Token auth** (SD-WAN Manager 20.18+): Uses `SDWAN_API_TOKEN` as Bearer token;

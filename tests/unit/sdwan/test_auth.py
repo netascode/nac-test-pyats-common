@@ -559,7 +559,7 @@ class TestTokenAuth:
             "nac_test.utils.controller.get_matched_credential_set"
         )
         mock_matched.return_value = CredentialSet(
-            env_vars=["SDWAN_URL", "SDWAN_API_TOKEN"],
+            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
             label="API Token (20.18+)",
             auth_method="token",
         )
@@ -583,7 +583,7 @@ class TestTokenAuth:
             "nac_test.utils.controller.get_matched_credential_set"
         )
         mock_matched.return_value = CredentialSet(
-            env_vars=["SDWAN_URL", "SDWAN_API_TOKEN"],
+            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
             label="API Token (20.18+)",
             auth_method="token",
         )
@@ -606,7 +606,7 @@ class TestTokenAuth:
             "nac_test.utils.controller.get_matched_credential_set"
         )
         mock_matched.return_value = CredentialSet(
-            env_vars=["SDWAN_URL", "SDWAN_API_TOKEN"],
+            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
             label="API Token (20.18+)",
             auth_method="token",
         )
@@ -629,7 +629,7 @@ class TestTokenAuth:
             "nac_test.utils.controller.get_matched_credential_set"
         )
         mock_matched.return_value = CredentialSet(
-            env_vars=["SDWAN_URL", "SDWAN_API_TOKEN"],
+            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
             label="API Token (20.18+)",
             auth_method="token",
         )
@@ -659,7 +659,7 @@ class TestTokenAuth:
             "nac_test.utils.controller.get_matched_credential_set"
         )
         mock_matched.return_value = CredentialSet(
-            env_vars=["SDWAN_URL", "SDWAN_API_TOKEN"],
+            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
             label="API Token (20.18+)",
             auth_method="token",
         )
@@ -691,7 +691,7 @@ class TestTokenAuth:
             "nac_test.utils.controller.get_matched_credential_set"
         )
         mock_matched.return_value = CredentialSet(
-            env_vars=["SDWAN_URL", "SDWAN_API_TOKEN"],
+            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
             label="API Token (20.18+)",
             auth_method="token",
         )
@@ -738,7 +738,7 @@ class TestTokenAuth:
             "nac_test.utils.controller.get_matched_credential_set"
         )
         mock_matched.return_value = CredentialSet(
-            env_vars=["SDWAN_URL", "SDWAN_USERNAME", "SDWAN_PASSWORD"],
+            env_vars=("SDWAN_URL", "SDWAN_USERNAME", "SDWAN_PASSWORD"),
             label="Username/Password",
             auth_method="session",
         )

@@ -552,9 +552,7 @@ class TestTokenAuth:
         """Patch get_matched_credential_set with token auth CredentialSet."""
         from nac_test.utils.controller import CredentialSet
 
-        mock = mocker.patch(
-            "nac_test.utils.controller.get_matched_credential_set"
-        )
+        mock = mocker.patch("nac_test.utils.controller.get_matched_credential_set")
         mock.return_value = CredentialSet(
             env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
             label="API Token (20.18+)",

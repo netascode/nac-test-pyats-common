@@ -29,28 +29,31 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
     """Base class for SDWAN Manager API tests with enhanced reporting.
 
     This class extends the generic NACTestBase to provide SDWAN Manager-specific
-    functionality including session management (JSESSIONID and optional XSRF token),
-    API call tracking for HTML reports, and wrapped HTTP client for automatic
-    response capture. It serves as the foundation for all SD-WAN controller-specific
+    functionality including authentication (token or session-based), API call
+    tracking for HTML reports, and wrapped HTTP client for automatic response
+    capture. It serves as the foundation for all SD-WAN controller-specific
     API test classes.
 
     The class follows the same pattern as APICTestBase for consistency across
-    NAC architecture adapters. Token refresh is handled automatically by the
-    AuthCache TTL mechanism.
+    NAC architecture adapters.
+
+    Two authentication modes are supported (determined by SDWANManagerAuth):
+    - **Token auth** (20.18+): Bearer Authorization + X-XSRF-TOKEN from JWT.
+    - **Session auth** (all versions): JSESSIONID cookie + optional X-XSRF-TOKEN.
+      Session refresh is handled automatically by the AuthCache TTL mechanism.
 
     Attributes:
-        auth_data (dict): SDWAN Manager authentication data containing jsessionid and
-            optional xsrf_token obtained during setup.
+        auth_data (dict): SDWAN Manager authentication data from get_auth().
+            Contains auth_method plus mode-specific keys (api_token/csrf_token
+            for token auth, jsessionid/xsrf_token for session auth).
         client (httpx.AsyncClient | None): Wrapped async HTTP client configured for
-            SDWAN Manager. Initialized to None, set during setup().
+            SDWAN Manager. Initialized to None, set during run_async_verification_test().
         controller_url (str): Base URL of the SDWAN Manager (inherited).
-        username (str): SDWAN Manager username for authentication (inherited).
-        password (str): SDWAN Manager password for authentication (inherited).
 
     Methods:
-        setup(): Initialize SDWAN Manager authentication and client.
+        setup(): Initialize SDWAN Manager authentication.
         get_sdwan_manager_client(): Create and configure an SDWAN Manager-specific
-            HTTP client.
+            HTTP client with the appropriate auth headers.
         run_async_verification_test(): Execute async verification tests with PyATS.
 
     Example:

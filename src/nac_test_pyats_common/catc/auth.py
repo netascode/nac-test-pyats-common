@@ -64,7 +64,7 @@ class CatalystCenterAuth:
     - Modern Catalyst Center 2.x: /api/system/v1/auth/token endpoint
     - Legacy DNA Center 1.x/2.x: /dna/system/api/v1/auth/token endpoint
 
-    The class mirrors VManageAuth pattern for consistency across NAC adapters.
+    The class mirrors SDWANManagerAuth pattern for consistency across NAC adapters.
 
     Example:
         >>> # Get authentication data for Catalyst Center API calls

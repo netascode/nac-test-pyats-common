@@ -12,6 +12,7 @@ Tests SD-WAN Manager authentication:
 5. Environment variable validation (missing credentials)
 6. URL normalization (trailing slash handling)
 7. Script body survival through _indent_script_body() transform
+8. Token auth path — get_matched_credential_set() integration
 """
 
 from io import BytesIO

@@ -194,29 +194,34 @@ if auth_body is not None:
 
 
 class SDWANManagerAuth:
-    """SDWAN Manager authentication implementation with session caching.
+    """SDWAN Manager authentication implementation.
 
-    This class provides a two-tier API for SDWAN Manager authentication:
+    This class provides a multi-tier API for SDWAN Manager authentication:
 
-    1. Low-level _authenticate() method: Directly authenticates with SDWAN Manager using
-       form-based login and returns session data along with expiration time. This is
-       typically used by the caching layer and not called directly by consumers.
+    1. High-level get_auth() method: Routes to the appropriate auth method based
+       on the credential set matched by nac-test's controller detection. This is
+       the primary method that consumers should use.
+    2. _get_token_auth(): JWT-based Bearer authentication (SD-WAN Manager 20.18+).
+       Extracts the CSRF token from the JWT payload. No network call required.
+    3. _get_session_auth(): Form-based login with cached session management via
+       AuthCache. Automatically handles session renewal when expired.
+    4. _authenticate(): Low-level subprocess-based session auth. Used internally
+       by _get_session_auth() via AuthCache.
 
-    2. High-level get_auth() method: Provides cached session management, automatically
-       handling session renewal when expired. This is the primary method that consumers
-       should use for obtaining SDWAN Manager authentication data.
-
-    The authentication flow supports both:
+    The authentication flow supports:
+    - 20.18+ versions: Bearer token auth with CSRF from JWT payload
+    - 19.2+ versions: JSESSIONID cookie plus X-XSRF-TOKEN header
     - Pre-19.2 versions: JSESSIONID cookie only
-    - 19.2+ versions: JSESSIONID cookie plus X-XSRF-TOKEN header for CSRF protection
 
     Example:
-        >>> # Get authentication data for SDWAN Manager API calls
         >>> auth_data = SDWANManagerAuth.get_auth()
-        >>> # Use in requests
-        >>> headers = {"Cookie": f"JSESSIONID={auth_data['jsessionid']}"}
-        >>> if auth_data.get("xsrf_token"):
-        ...     headers["X-XSRF-TOKEN"] = auth_data["xsrf_token"]
+        >>> if auth_data["auth_method"] == "token":
+        ...     headers = {"Authorization": f"Bearer {auth_data['api_token']}"}
+        ...     headers["X-XSRF-TOKEN"] = auth_data["csrf_token"]
+        >>> else:
+        ...     headers = {"Cookie": f"JSESSIONID={auth_data['jsessionid']}"}
+        ...     if auth_data.get("xsrf_token"):
+        ...         headers["X-XSRF-TOKEN"] = auth_data["xsrf_token"]
     """
 
     @staticmethod

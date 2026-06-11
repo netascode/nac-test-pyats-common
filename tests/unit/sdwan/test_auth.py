@@ -546,23 +546,27 @@ class TestTokenAuth:
     )
     EXPECTED_CSRF = "DEADBEEF1234"
 
-    def test_token_auth_returns_api_token_and_csrf(
-        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """When auth_method=token, returns api_token and csrf_token from JWT."""
+    @pytest.fixture
+    def mock_credential_set(self, mocker: MockerFixture) -> MagicMock:
+        """Patch get_matched_credential_set with token auth CredentialSet."""
         from nac_test.utils.controller import CredentialSet
 
-        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
-        monkeypatch.setenv("SDWAN_API_TOKEN", self.VALID_JWT)
-
-        mock_matched = mocker.patch(
+        mock = mocker.patch(
             "nac_test.utils.controller.get_matched_credential_set"
         )
-        mock_matched.return_value = CredentialSet(
+        mock.return_value = CredentialSet(
             env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
             label="API Token (20.18+)",
             auth_method="token",
         )
+        return mock
+
+    def test_token_auth_returns_api_token_and_csrf(
+        self, mock_credential_set: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When auth_method=token, returns api_token and csrf_token from JWT."""
+        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
+        monkeypatch.setenv("SDWAN_API_TOKEN", self.VALID_JWT)
 
         result = SDWANManagerAuth.get_auth()
 
@@ -571,22 +575,11 @@ class TestTokenAuth:
         assert result["csrf_token"] == self.EXPECTED_CSRF
 
     def test_token_auth_missing_token_raises(
-        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+        self, mock_credential_set: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Error when SDWAN_API_TOKEN is missing in token mode."""
-        from nac_test.utils.controller import CredentialSet
-
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.delenv("SDWAN_API_TOKEN", raising=False)
-
-        mock_matched = mocker.patch(
-            "nac_test.utils.controller.get_matched_credential_set"
-        )
-        mock_matched.return_value = CredentialSet(
-            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
-            label="API Token (20.18+)",
-            auth_method="token",
-        )
 
         with pytest.raises(ValueError) as exc_info:
             SDWANManagerAuth.get_auth()
@@ -594,22 +587,11 @@ class TestTokenAuth:
         assert "SDWAN_API_TOKEN" in str(exc_info.value)
 
     def test_token_auth_missing_url_raises(
-        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+        self, mock_credential_set: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Error when SDWAN_URL is missing in token mode."""
-        from nac_test.utils.controller import CredentialSet
-
         monkeypatch.delenv("SDWAN_URL", raising=False)
         monkeypatch.setenv("SDWAN_API_TOKEN", "my-secret-token")
-
-        mock_matched = mocker.patch(
-            "nac_test.utils.controller.get_matched_credential_set"
-        )
-        mock_matched.return_value = CredentialSet(
-            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
-            label="API Token (20.18+)",
-            auth_method="token",
-        )
 
         with pytest.raises(ValueError) as exc_info:
             SDWANManagerAuth.get_auth()
@@ -617,22 +599,14 @@ class TestTokenAuth:
         assert "SDWAN_URL" in str(exc_info.value)
 
     def test_token_auth_no_subprocess_call(
-        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+        self,
+        mocker: MockerFixture,
+        mock_credential_set: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Token auth does NOT invoke subprocess or AuthCache."""
-        from nac_test.utils.controller import CredentialSet
-
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_API_TOKEN", self.VALID_JWT)
-
-        mock_matched = mocker.patch(
-            "nac_test.utils.controller.get_matched_credential_set"
-        )
-        mock_matched.return_value = CredentialSet(
-            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
-            label="API Token (20.18+)",
-            auth_method="token",
-        )
 
         mock_cache = mocker.patch(
             "nac_test_pyats_common.sdwan.auth.AuthCache.get_or_create"
@@ -647,34 +621,21 @@ class TestTokenAuth:
         mock_subprocess.assert_not_called()
 
     def test_token_auth_invalid_jwt_raises(
-        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+        self, mock_credential_set: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Error when SDWAN_API_TOKEN is not a valid JWT (no dots)."""
-        from nac_test.utils.controller import CredentialSet
-
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_API_TOKEN", "not-a-jwt")
-
-        mock_matched = mocker.patch(
-            "nac_test.utils.controller.get_matched_credential_set"
-        )
-        mock_matched.return_value = CredentialSet(
-            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
-            label="API Token (20.18+)",
-            auth_method="token",
-        )
 
         with pytest.raises(ValueError, match="not a valid JWT"):
             SDWANManagerAuth.get_auth()
 
     def test_token_auth_missing_csrf_raises(
-        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+        self, mock_credential_set: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Error when JWT payload has no 'csrf' field."""
         import base64
         import json
-
-        from nac_test.utils.controller import CredentialSet
 
         # JWT with payload {"sub": "admin"} — no csrf field
         payload = (
@@ -687,30 +648,21 @@ class TestTokenAuth:
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_API_TOKEN", no_csrf_jwt)
 
-        mock_matched = mocker.patch(
-            "nac_test.utils.controller.get_matched_credential_set"
-        )
-        mock_matched.return_value = CredentialSet(
-            env_vars=("SDWAN_URL", "SDWAN_API_TOKEN"),
-            label="API Token (20.18+)",
-            auth_method="token",
-        )
-
         with pytest.raises(ValueError, match="missing 'csrf' field"):
             SDWANManagerAuth.get_auth()
 
     def test_session_auth_when_no_matched_credential_set(
-        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+        self,
+        mocker: MockerFixture,
+        mock_credential_set: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Falls back to session auth when get_matched_credential_set returns None."""
+        mock_credential_set.return_value = None
+
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_USERNAME", "admin")
         monkeypatch.setenv("SDWAN_PASSWORD", "password123")
-
-        mock_matched = mocker.patch(
-            "nac_test.utils.controller.get_matched_credential_set"
-        )
-        mock_matched.return_value = None
 
         mock_cache = mocker.patch(
             "nac_test_pyats_common.sdwan.auth.AuthCache.get_or_create"
@@ -725,23 +677,23 @@ class TestTokenAuth:
         mock_cache.assert_called_once()
 
     def test_session_auth_includes_auth_method_key(
-        self, mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+        self,
+        mocker: MockerFixture,
+        mock_credential_set: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Session auth result includes auth_method='session'."""
         from nac_test.utils.controller import CredentialSet
 
-        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
-        monkeypatch.setenv("SDWAN_USERNAME", "admin")
-        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
-
-        mock_matched = mocker.patch(
-            "nac_test.utils.controller.get_matched_credential_set"
-        )
-        mock_matched.return_value = CredentialSet(
+        mock_credential_set.return_value = CredentialSet(
             env_vars=("SDWAN_URL", "SDWAN_USERNAME", "SDWAN_PASSWORD"),
             label="Username/Password",
             auth_method="session",
         )
+
+        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
+        monkeypatch.setenv("SDWAN_USERNAME", "admin")
+        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
 
         mock_cache = mocker.patch(
             "nac_test_pyats_common.sdwan.auth.AuthCache.get_or_create"

@@ -136,11 +136,13 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
             # Bearer token auth (SD-WAN Manager 20.18+)
             headers["Authorization"] = f"Bearer {self.auth_data['api_token']}"
             headers["X-XSRF-TOKEN"] = self.auth_data["csrf_token"]
-        else:
+        elif auth_method == "session":
             # Session-based auth (JSESSIONID + optional XSRF token)
             headers["Cookie"] = f"JSESSIONID={self.auth_data['jsessionid']}"
             if self.auth_data.get("xsrf_token"):
                 headers["X-XSRF-TOKEN"] = self.auth_data["xsrf_token"]
+        else:
+            raise ValueError(f"Unsupported auth_method: {auth_method!r}")
 
         # Get base client from pool with SSL verification disabled for lab compatibility
         base_client = self.pool.get_client(

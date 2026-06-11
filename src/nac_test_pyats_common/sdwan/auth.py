@@ -34,6 +34,7 @@ Note on Fork Safety:
 
 import base64
 import json
+import logging
 import os
 from typing import Any
 
@@ -42,6 +43,13 @@ from nac_test.pyats_core.common.subprocess_auth import (
     SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
     execute_auth_subprocess,
 )
+
+try:
+    from nac_test.utils.controller import get_matched_credential_set
+except ImportError:
+    get_matched_credential_set = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 # Default session lifetime for SDWAN Manager authentication in seconds
 # SDWAN Manager sessions are typically valid for 30 minutes (1800 seconds) by default
@@ -330,11 +338,17 @@ class SDWANManagerAuth:
             'session'
             >>> headers = {"Cookie": f"JSESSIONID={auth_data['jsessionid']}"}
         """
-        from nac_test.utils.controller import get_matched_credential_set
-
         # Determine auth method from the credential set matched during detection
-        matched = get_matched_credential_set("SDWAN")
-        auth_method = matched.auth_method if matched else "session"
+        if get_matched_credential_set is not None:
+            matched = get_matched_credential_set("SDWAN")
+            auth_method = matched.auth_method if matched else "session"
+        else:
+            logger.warning(
+                "nac_test.utils.controller.get_matched_credential_set is not "
+                "available — falling back to session auth. This usually "
+                "indicates a nac-test version mismatch or incomplete installation."
+            )
+            auth_method = "session"
 
         if auth_method == "token":
             return cls._get_token_auth()

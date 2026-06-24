@@ -31,6 +31,8 @@ from nac_test.pyats_core.common.subprocess_auth import (
     execute_auth_subprocess,
 )
 
+from nac_test_pyats_common.common.env import require_env_vars
+
 # Default token lifetime for Catalyst Center authentication in seconds
 # Catalyst Center tokens are typically valid for 1 hour (3600 seconds) by default
 CATALYST_CENTER_TOKEN_LIFETIME_SECONDS: int = 3600
@@ -62,7 +64,7 @@ class CatalystCenterAuth:
     - Modern Catalyst Center 2.x: /api/system/v1/auth/token endpoint
     - Legacy DNA Center 1.x/2.x: /dna/system/api/v1/auth/token endpoint
 
-    The class mirrors VManageAuth pattern for consistency across NAC adapters.
+    The class mirrors SDWANManagerAuth pattern for consistency across NAC adapters.
 
     Example:
         >>> # Get authentication data for Catalyst Center API calls
@@ -250,30 +252,16 @@ else:
             >>> # Use in API requests
             >>> headers = {"X-Auth-Token": auth_data["token"]}
         """
-        url = os.environ.get("CC_URL")
-        username = os.environ.get("CC_USERNAME")
-        password = os.environ.get("CC_PASSWORD")
+        env = require_env_vars("CC_URL", "CC_USERNAME", "CC_PASSWORD")
+        url = env["CC_URL"].rstrip("/")
+        username = env["CC_USERNAME"]
+        password = env["CC_PASSWORD"]
         insecure = os.environ.get("CC_INSECURE", "True").lower() in ("true", "1", "yes")
-
-        if not all([url, username, password]):
-            missing_vars: list[str] = []
-            if not url:
-                missing_vars.append("CC_URL")
-            if not username:
-                missing_vars.append("CC_USERNAME")
-            if not password:
-                missing_vars.append("CC_PASSWORD")
-            raise ValueError(
-                f"Missing required environment variables: {', '.join(missing_vars)}"
-            )
-
-        # Normalize URL by removing trailing slash
-        url = url.rstrip("/")  # type: ignore[union-attr]
         verify_ssl = not insecure  # CC_INSECURE=True means verify=False
 
         def auth_wrapper() -> tuple[dict[str, Any], int]:
             """Wrapper for authentication that captures closure variables."""
-            return cls._authenticate(url, username, password, verify_ssl)  # type: ignore[arg-type]
+            return cls._authenticate(url, username, password, verify_ssl)
 
         # AuthCache.get_or_create returns dict[str, Any], but mypy can't verify this
         # because nac_test lacks py.typed marker.

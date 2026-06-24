@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **SD-WAN Token Authentication Support** ([#33](https://github.com/netascode/nac-test-pyats-common/pull/33))
+  - Token-based authentication for SD-WAN Manager 20.18+ (`SDWAN_API_TOKEN` with JWT-derived CSRF)
+  - Automatic auth method selection via `get_matched_credential_set()` from nac-test
+  - Legacy session-based authentication remains supported
+
 ## [0.2.0] - 2025-01-27
 
 ### Added

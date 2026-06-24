@@ -189,10 +189,21 @@ Each architecture requires specific environment variables for authentication:
 - `CC_INSECURE` - Skip SSL verification (optional, default: "True")
 
 ### SD-WAN
-- `VMANAGE_URL` - vManage URL
-- `VMANAGE_USERNAME` - Username
-- `VMANAGE_PASSWORD` - Password
-- `VMANAGE_INSECURE` - Skip SSL verification (optional, default: "True")
+
+**Session auth (username/password):**
+- `SDWAN_URL` - SD-WAN Manager URL
+- `SDWAN_USERNAME` - Username
+- `SDWAN_PASSWORD` - Password
+- `SDWAN_INSECURE` - Skip SSL verification (optional, default: "True")
+
+**Token auth (20.18+):**
+- `SDWAN_URL` - SD-WAN Manager URL
+- `SDWAN_API_TOKEN` - API token (JWT) for Bearer authentication
+
+The auth method is determined automatically by nac-test's credential set detection.
+If `SDWAN_API_TOKEN` is set (and `SDWAN_URL`), token auth is used — the JWT payload
+is decoded to extract the CSRF token, which is sent as the `X-XSRF-TOKEN` header
+alongside `Authorization: Bearer`. Otherwise, username/password session auth is used.
 
 ### ACI
 - `APIC_URL` - APIC URL

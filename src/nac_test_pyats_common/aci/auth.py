@@ -30,6 +30,8 @@ from nac_test.pyats_core.common.subprocess_auth import (
     execute_auth_subprocess,
 )
 
+from nac_test_pyats_common.common.env import require_env_vars
+
 # Default token lifetime for APIC authentication tokens in seconds
 # APIC tokens are typically valid for 10 minutes (600 seconds) by default
 APIC_TOKEN_LIFETIME_SECONDS: int = 600
@@ -251,37 +253,15 @@ except Exception as e:
         Raises:
             ValueError: If required environment variables are not set.
         """
-        url = os.environ.get("ACI_URL")
-        username = os.environ.get("ACI_USERNAME")
-        password = os.environ.get("ACI_PASSWORD")
+        env = require_env_vars("ACI_URL", "ACI_USERNAME", "ACI_PASSWORD")
+        url = env["ACI_URL"].rstrip("/")
+        username = env["ACI_USERNAME"]
+        password = env["ACI_PASSWORD"]
         insecure = os.environ.get("ACI_INSECURE", "True").lower() in (
             "true",
             "1",
             "yes",
         )
-
-        # Validate environment variables and collect missing ones
-        missing_vars: list[str] = []
-        if not url:
-            missing_vars.append("ACI_URL")
-        if not username:
-            missing_vars.append("ACI_USERNAME")
-        if not password:
-            missing_vars.append("ACI_PASSWORD")
-
-        if missing_vars:
-            raise ValueError(
-                f"Missing required environment variables: {', '.join(missing_vars)}"
-            )
-
-        # Type narrowing: url, username, password are guaranteed to be str
-        # We raised ValueError above if any were None/empty
-        assert url is not None
-        assert username is not None
-        assert password is not None
-
-        # Normalize URL by removing trailing slash
-        url = url.rstrip("/")
         verify_ssl = not insecure  # APIC_INSECURE=True means verify=False
 
         return cls.get_token(url, username, password, verify_ssl)

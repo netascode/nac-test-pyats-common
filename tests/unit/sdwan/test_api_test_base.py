@@ -8,31 +8,6 @@ Tests the data model navigation logic that extracts device identifiers
 API query parameters.
 """
 
-from typing import Any
-from unittest.mock import patch
-
-import pytest
-
-
-@pytest.fixture
-def make_base_instance():
-    """Create a minimal SDWANManagerTestBase instance with a mocked data_model."""
-
-    def _factory(data_model: dict[str, Any]):
-        with patch(
-            "nac_test_pyats_common.sdwan.api_test_base.SDWANManagerTestBase.__init__",
-            return_value=None,
-        ):
-            from nac_test_pyats_common.sdwan.api_test_base import (
-                SDWANManagerTestBase,
-            )
-
-            instance = SDWANManagerTestBase.__new__(SDWANManagerTestBase)
-            instance.data_model = data_model
-            return instance
-
-    return _factory
-
 
 class TestGetDevicesFromDataModel:
     """Tests for get_devices_from_data_model method."""

@@ -300,7 +300,7 @@ class TestGetDevicesFromDataModel:
         self, make_base_instance: _MakeInstance
     ) -> None:
         """Returns empty list when no sites are defined."""
-        data_model = {"sdwan": {"sites": []}}
+        data_model: dict[str, Any] = {"sdwan": {"sites": []}}
         instance = make_base_instance(data_model)
         devices = instance.get_devices_from_data_model()
 
@@ -310,7 +310,7 @@ class TestGetDevicesFromDataModel:
         self, make_base_instance: _MakeInstance
     ) -> None:
         """Returns empty list when data model has no sdwan key."""
-        data_model = {}
+        data_model: dict[str, Any] = {}
         instance = make_base_instance(data_model)
         devices = instance.get_devices_from_data_model()
 

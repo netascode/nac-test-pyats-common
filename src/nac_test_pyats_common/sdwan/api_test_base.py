@@ -155,6 +155,65 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         # Use the generic tracking wrapper from base class
         return self.wrap_client_for_tracking(base_client, device_name="SDWAN Manager")  # type: ignore[no-any-return]
 
+    def get_devices_from_data_model(self) -> list[dict[str, Any]]:
+        """Extract SD-WAN device identifiers from the NAC data model for API queries.
+
+        Navigates the standard NaC SD-WAN schema structure to extract the system_ip,
+        site_id, and hostname for each router across all sites. These identifiers are
+        used as query parameters (deviceId) when querying per-device operational state
+        from the SD-WAN Manager dataservice API.
+
+        Schema structure supported:
+            sdwan:
+              sites:
+                - id: 100
+                  routers:
+                    - device_variables:
+                        system_ip: "10.0.0.1"
+                        site_id: 100
+                        host_name: "router1"         # UX 2.0
+                        system_hostname: "router1"   # UX 1.0
+
+        Returns:
+            List of dictionaries, each containing:
+                - system_ip (str): Device system IP used as deviceId in API queries
+                - site_id (str | int | None): Site identifier
+                - hostname (str): Human-readable device name for logging/reporting
+
+        Example:
+            >>> devices = self.get_devices_from_data_model()
+            >>> for device in devices:
+            ...     url = f"/dataservice/device/bfd/sessions"
+            ...     url += f"?deviceId={device['system_ip']}"
+            ...     response = await client.get(url)
+        """
+        devices: list[dict[str, Any]] = []
+        sdwan = self.data_model.get("sdwan", {})
+
+        for site in sdwan.get("sites", []):
+            site_id_fallback = site.get("id")
+            for router in site.get("routers", []):
+                vars_ = router.get("device_variables", {})
+                system_ip = vars_.get("system_ip")
+                if not system_ip:
+                    continue
+
+                site_id = vars_.get("site_id") or site_id_fallback
+                hostname = (
+                    vars_.get("host_name")
+                    or vars_.get("system_hostname")
+                    or str(system_ip)
+                )
+                devices.append(
+                    {
+                        "system_ip": system_ip,
+                        "site_id": site_id,
+                        "hostname": hostname,
+                    }
+                )
+
+        return devices
+
     def run_async_verification_test(self, steps: Any) -> None:
         """Execute asynchronous verification tests with PyATS step tracking.
 

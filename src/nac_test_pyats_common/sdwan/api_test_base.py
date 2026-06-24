@@ -176,9 +176,9 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         Example:
             >>> devices = self.get_devices_from_data_model()
             >>> for device in devices:
-            ...     response = await client.get(
-            ...         f"/dataservice/device/control/connections?deviceId={device['system_ip']}"
-            ...     )
+            ...     url = f"/dataservice/device/bfd/sessions"
+            ...     url += f"?deviceId={device['system_ip']}"
+            ...     response = await client.get(url)
         """
         devices: list[dict[str, Any]] = []
         sdwan = self.data_model.get("sdwan", {})
@@ -197,11 +197,13 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
                     or vars_.get("system_hostname")
                     or str(system_ip)
                 )
-                devices.append({
-                    "system_ip": system_ip,
-                    "site_id": site_id,
-                    "hostname": hostname,
-                })
+                devices.append(
+                    {
+                        "system_ip": system_ip,
+                        "site_id": site_id,
+                        "hostname": hostname,
+                    }
+                )
 
         return devices
 

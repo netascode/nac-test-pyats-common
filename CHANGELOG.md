@@ -10,19 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **SD-WAN Token Authentication Support** ([#33](https://github.com/netascode/nac-test-pyats-common/pull/33))
-  - `SDWANManagerAuth.get_auth()` now consults `get_matched_credential_set()` from nac-test
-    to determine authentication mechanism (token vs session)
-  - **Token auth** (SD-WAN Manager 20.18+): Uses `SDWAN_API_TOKEN` as Bearer token;
-    CSRF token is extracted from the JWT payload and sent as `X-XSRF-TOKEN` header.
-    No subprocess login or session caching required
-  - **Session auth** (legacy): Unchanged form-based login with JSESSIONID + XSRF token
-  - `SDWANManagerTestBase.get_sdwan_manager_client()` sets `Authorization: Bearer` +
-    `X-XSRF-TOKEN` headers for token auth, or `Cookie: JSESSIONID` + `X-XSRF-TOKEN`
-    for session auth
-  - `get_auth()` return dict now includes `auth_method` key (`"token"` or `"session"`),
-    and for token auth also includes `csrf_token` extracted from the JWT payload
-  - 8 new unit tests covering token auth path, CSRF extraction, JWT validation,
-    fallback behavior, and error cases
+  - Token-based authentication for SD-WAN Manager 20.18+ (`SDWAN_API_TOKEN` with JWT-derived CSRF)
+  - Automatic auth method selection via `get_matched_credential_set()` from nac-test
+  - Legacy session-based authentication remains supported
 
 ## [0.2.0] - 2025-01-27
 

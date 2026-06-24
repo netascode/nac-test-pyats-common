@@ -15,9 +15,9 @@ Tests SD-WAN Manager authentication:
 8. Token auth path — get_matched_credential_set() integration
 """
 
+from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
-from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
@@ -39,6 +39,7 @@ except ImportError:
         env_vars: tuple[str, ...]
         label: str
         auth_method: str = "session"
+
 
 # ---------------------------------------------------------------------------
 # Shared test params used by script body execution tests

@@ -17,6 +17,7 @@ Tests SD-WAN Manager authentication:
 
 from io import BytesIO
 from typing import Any
+from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,6 +27,18 @@ from nac_test_pyats_common.sdwan.auth import (
     _AUTH_SCRIPT_BODY,
     SDWANManagerAuth,
 )
+
+try:
+    from nac_test.utils.controller import CredentialSet
+except ImportError:
+    # Fallback for CI pipelines where nac-test hasn't been updated yet.
+    # Tests only need an object with the same attributes as CredentialSet;
+    # get_matched_credential_set() is fully mocked so the real class isn't required.
+    @dataclass(frozen=True)
+    class CredentialSet:  # type: ignore[no-redef]
+        env_vars: tuple[str, ...]
+        label: str
+        auth_method: str = "session"
 
 # ---------------------------------------------------------------------------
 # Shared test params used by script body execution tests
@@ -550,8 +563,6 @@ class TestTokenAuth:
     @pytest.fixture
     def mock_credential_set(self, mocker: MockerFixture) -> MagicMock:
         """Patch get_matched_credential_set with token auth CredentialSet."""
-        from nac_test.utils.controller import CredentialSet
-
         mock = mocker.patch(
             "nac_test_pyats_common.sdwan.auth.get_matched_credential_set"
         )
@@ -684,8 +695,6 @@ class TestTokenAuth:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Session auth result includes auth_method='session'."""
-        from nac_test.utils.controller import CredentialSet
-
         mock_credential_set.return_value = CredentialSet(
             env_vars=("SDWAN_URL", "SDWAN_USERNAME", "SDWAN_PASSWORD"),
             label="Username/Password",

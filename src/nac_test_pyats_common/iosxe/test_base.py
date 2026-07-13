@@ -124,10 +124,24 @@ class IOSXETestBase(SSHTestBase):  # type: ignore[misc]
         excluded for this router.
 
         Detection order:
-            1. SD-WAN 20.18+ — match by ``router.topology_label``.
-            2. SD-WAN 20.15 and earlier — match by ``router.tags``.
-            3. No ``device_tags`` on the config group, or no router metadata —
-               returns an empty set (no exclusion).
+            1. SD-WAN 20.18+ — match by ``router.topology_label`` when it is a
+               non-empty string.
+            2. SD-WAN 20.15 and earlier — match by any non-empty string in
+               ``router.tags``.
+
+        The result is always an empty set on any detection failure (fail-safe:
+        over-test rather than silently skip). The following branches return an
+        empty set:
+
+            * No ``device_tags`` on the config group — silent, nothing to
+              exclude.
+            * Router has neither a usable ``topology_label`` nor any usable
+              ``tags`` — logs a WARNING and returns an empty set.
+            * Router identifier matches no ``device_tags[].name`` (typo,
+              rename, or migration bug) — logs a WARNING and returns an empty
+              set.
+            * A ``device_tags`` entry has ``features`` that is neither ``None``
+              nor a list — logs a WARNING and skips that entry.
 
         Args:
             router: Router dictionary from ``sdwan.sites[].routers[]``.
@@ -136,38 +150,68 @@ class IOSXETestBase(SSHTestBase):  # type: ignore[misc]
 
         Returns:
             Set of feature names assigned to the OTHER device in a dual-device
-            pair, which the caller should skip when iterating BGP, OSPF, OMP, or
-            other UX 2.0 feature definitions.
+            pair, which the caller should skip when iterating BGP, OSPF, OMP,
+            or other UX 2.0 feature definitions.
         """
         device_tags = config_group.get("device_tags") or []
         if not device_tags:
             return set()
 
+        group_name = config_group.get("name")
+        router_identity = router.get("hostname") or router.get("chassis_id")
+
         topology_label = router.get("topology_label")
-        if topology_label:
-            return {
-                feature
-                for tag in device_tags
-                if tag.get("name") != topology_label
-                for feature in (tag.get("features") or [])
-            }
+        if isinstance(topology_label, str) and topology_label:
+            router_tag_names: list[str] = [topology_label]
+        else:
+            raw_tags = router.get("tags") or []
+            router_tag_names = (
+                [t for t in raw_tags if isinstance(t, str) and t]
+                if isinstance(raw_tags, list)
+                else []
+            )
 
-        tags = router.get("tags") or []
-        if tags:
-            return {
-                feature
-                for tag in device_tags
-                if tag.get("name") not in tags
-                for feature in (tag.get("features") or [])
-            }
+        if not router_tag_names:
+            logger.warning(
+                "Configuration group %r has device_tags but router %r has "
+                "neither topology_label nor tags; no features will be excluded.",
+                group_name,
+                router_identity,
+            )
+            return set()
 
-        logger.warning(
-            "Configuration group %r has device_tags but router %r has neither "
-            "topology_label nor tags; no features will be excluded.",
-            config_group.get("name"),
-            router.get("hostname") or router.get("chassis_id"),
-        )
-        return set()
+        device_tag_names = {
+            tag.get("name") for tag in device_tags if isinstance(tag.get("name"), str)
+        }
+        if device_tag_names.isdisjoint(router_tag_names):
+            logger.warning(
+                "Router %r identifier(s) %r match no device_tags in "
+                "configuration group %r; no features will be excluded.",
+                router_identity,
+                router_tag_names,
+                group_name,
+            )
+            return set()
+
+        excluded: set[str] = set()
+        for tag in device_tags:
+            name = tag.get("name")
+            if not isinstance(name, str) or name in router_tag_names:
+                continue
+            features = tag.get("features")
+            if features is None:
+                continue
+            if not isinstance(features, list):
+                logger.warning(
+                    "Configuration group %r device_tag %r has features of type "
+                    "%s (expected list); ignoring.",
+                    group_name,
+                    name,
+                    type(features).__name__,
+                )
+                continue
+            excluded.update(f for f in features if isinstance(f, str))
+        return excluded
 
     def get_device_credentials(self, device: dict[str, Any]) -> dict[str, str | None]:
         """Get IOS-XE device credentials from environment.

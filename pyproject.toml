@@ -29,7 +29,7 @@ keywords = ["cisco", "network", "testing", "pyats", "nac", "aci", "sdwan", "cata
 dependencies = [
     "filelock>=3.25.2",
     "httpx~=0.28",  # HTTP client for auth
-    "nac-test>=2.0.0",
+    "nac-test",  # version pinned via [tool.uv.sources] during bridge period
 ]
 
 [project.optional-dependencies]
@@ -52,17 +52,15 @@ Repository = "https://github.com/netascode/nac-test-pyats-common"
 Issues = "https://github.com/netascode/nac-test-pyats-common/issues"
 
 [tool.uv]
-# pyats/genie 26.4 misses manylinux2014_x86_64 for py310, so uv sync fails.
-# workaround to address this until the wheels are fixed in pyats/genie 26.4 or later.
-constraint-dependencies = [
-    "pyats<26.4",
-    "genie<26.4",
-]
 # pysnmp==6.1.4 (pulled in by genie-libs-sdk) incorrectly declares pytest-cov<5 as a
 # runtime dependency. Override it so we can use current pytest-cov releases.
 override-dependencies = [
     "pytest-cov>=7.1",
 ]
+
+[tool.uv.sources]
+# Temporary: use nac-test from feature branch until bridge release is published
+nac-test = { git = "https://github.com/netascode/nac-test.git", branch = "feat/856-controller-resolution-refactor" }
 
 [build-system]
 requires = ["hatchling"]

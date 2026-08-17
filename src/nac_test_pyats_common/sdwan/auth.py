@@ -13,7 +13,7 @@ methods are supported:
 2. **Session auth** (all versions): Form-based login with JSESSIONID cookie and
    optional XSRF token for CSRF protection.
 
-The auth method is determined by `get_matched_credential_set()` from nac-test's
+The auth method is determined by `get_controller_context()` from nac-test's
 controller detection module.
 
 The module implements a multi-tier API design:
@@ -38,6 +38,7 @@ import logging
 import os
 from typing import Any
 
+from nac_test.core.controller import get_controller_context
 from nac_test.pyats_core.common.auth_cache import AuthCache
 from nac_test.pyats_core.common.subprocess_auth import (
     SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
@@ -45,11 +46,6 @@ from nac_test.pyats_core.common.subprocess_auth import (
 )
 
 from nac_test_pyats_common.common.env import require_env_vars
-
-try:
-    from nac_test.utils.controller import get_matched_credential_set
-except ImportError:
-    get_matched_credential_set = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -345,16 +341,12 @@ class SDWANManagerAuth:
             'session'
             >>> headers = {"Cookie": f"JSESSIONID={auth_data['jsessionid']}"}
         """
-        # Determine auth method from the credential set matched during detection
-        if get_matched_credential_set is not None:
-            matched = get_matched_credential_set("SDWAN")
-            auth_method = matched.auth_method if matched else "session"
-        else:
-            logger.warning(
-                "nac_test.utils.controller.get_matched_credential_set is not "
-                "available — falling back to session auth. This usually "
-                "indicates a nac-test version mismatch or incomplete installation."
-            )
+        # Determine auth method from controller context resolved by orchestrator
+        try:
+            ctx = get_controller_context()
+            auth_method = ctx.auth_method
+        except RuntimeError:
+            # No context available (standalone usage without orchestrator)
             auth_method = "session"
 
         if auth_method == "token":

@@ -6,8 +6,8 @@
 import os
 from typing import Any
 
+from nac_test.core.controller import get_controller_context
 from nac_test.pyats_core.common.ssh_base_test import SSHTestBase
-from nac_test.utils.controller import detect_controller_type
 
 from .registry import get_resolver_for_controller
 
@@ -46,8 +46,12 @@ class IOSXETestBase(SSHTestBase):  # type: ignore[misc]
         Raises:
             ValueError: If controller type is unsupported or data validation fails.
         """
-        # Try to detect controller type from environment
-        controller_type = detect_controller_type()
+        # Try to get controller type from resolved context
+        try:
+            ctx = get_controller_context()
+            controller_type = ctx.controller_type
+        except RuntimeError:
+            controller_type = "UNKNOWN"
 
         # If no controller detected, infer from data model
         if controller_type == "UNKNOWN":

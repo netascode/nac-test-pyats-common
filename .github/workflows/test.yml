@@ -98,6 +98,8 @@ jobs:
       - name: Test
         run: |
           uv sync --extra dev
+          # Install nac-test from feature branch until bridge release is published
+          uv pip install "nac-test @ git+https://github.com/netascode/nac-test.git@feat/856-controller-resolution-refactor"
           uv run pytest
 
   notification:

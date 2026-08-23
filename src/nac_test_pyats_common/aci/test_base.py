@@ -16,6 +16,7 @@ import asyncio
 from typing import Any
 
 import httpx
+from nac_test.core.controller import get_connection_params
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -80,13 +81,21 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
         """
         super().setup()
 
+        if self.controller_type != "ACI":
+            self.failed(
+                f"This test requires controller_type=ACI, but resolved "
+                f"controller_type={self.controller_type!r}"
+            )
+            return
+
         # Get shared APIC token using file-based locking
         # This reads from file cache - no httpx client creation here
         try:
+            params = get_connection_params("ACI", self.auth_method)
             self.token = APICAuth.get_token(
-                self.controller_url, self.username, self.password
+                self.controller_url, params["username"], params["password"]
             )
-        except (RuntimeError, ValueError) as e:
+        except (RuntimeError, ValueError, KeyError) as e:
             # Convert auth failures to FAILED (not ERRORED) - auth issues are
             # expected failure conditions, not infrastructure errors
             self.token = ""  # Ensure attribute exists for cleanup code

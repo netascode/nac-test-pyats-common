@@ -446,7 +446,7 @@ class TestGetAuthEnvironmentValidation:
             SDWANManagerAuth.get_auth()
 
         assert "SDWAN_URL" in str(exc_info.value)
-        assert "Missing required environment variables" in str(exc_info.value)
+        assert "Missing required environment variable" in str(exc_info.value)
 
     def test_get_auth_missing_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Error when SDWAN_USERNAME is missing."""
@@ -675,7 +675,7 @@ class TestTokenAuth:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Falls back to session auth when get_controller_context raises."""
-        mock_controller_context.side_effect = RuntimeError("No context available")
+        mock_controller_context.side_effect = ValueError("No context available")
 
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_USERNAME", "admin")

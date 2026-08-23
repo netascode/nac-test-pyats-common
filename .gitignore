@@ -80,6 +80,9 @@ tmp/
 # Pabot
 .pabotsuitenames
 
+# pyATS runinfo directory (created when aetest.Testcase.setup() runs outside a job)
+/default/
+
 # Application execution logs (including Claude Code logs)
 logs/
 

@@ -22,15 +22,12 @@ Note on Fork Safety:
     that work correctly after fork().
 """
 
-import os
-
+from nac_test.core.controller import get_connection_params, get_insecure_flag
 from nac_test.pyats_core.common.auth_cache import AuthCache
 from nac_test.pyats_core.common.subprocess_auth import (
     SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
     execute_auth_subprocess,
 )
-
-from nac_test_pyats_common.common.env import require_env_vars
 
 # Default token lifetime for APIC authentication tokens in seconds
 # APIC tokens are typically valid for 10 minutes (600 seconds) by default
@@ -253,15 +250,8 @@ except Exception as e:
         Raises:
             ValueError: If required environment variables are not set.
         """
-        env = require_env_vars("ACI_URL", "ACI_USERNAME", "ACI_PASSWORD")
-        url = env["ACI_URL"].rstrip("/")
-        username = env["ACI_USERNAME"]
-        password = env["ACI_PASSWORD"]
-        insecure = os.environ.get("ACI_INSECURE", "True").lower() in (
-            "true",
-            "1",
-            "yes",
-        )
-        verify_ssl = not insecure  # APIC_INSECURE=True means verify=False
+        params = get_connection_params("ACI", "session")
+        url = params["url"].rstrip("/")
+        verify_ssl = not get_insecure_flag("ACI")
 
-        return cls.get_token(url, username, password, verify_ssl)
+        return cls.get_token(url, params["username"], params["password"], verify_ssl)

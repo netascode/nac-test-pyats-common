@@ -17,6 +17,7 @@ import asyncio
 from typing import Any
 
 import httpx
+from nac_test.core.controller import get_connection_params
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -47,7 +48,8 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
             Contains auth_method plus mode-specific keys (api_token/csrf_token
             for token auth, jsessionid/xsrf_token for session auth).
         client (httpx.AsyncClient | None): Wrapped async HTTP client configured for
-            SDWAN Manager. Initialized to None, set during run_async_verification_test().
+            SDWAN Manager. Initialized to None, set during
+            run_async_verification_test().
         controller_url (str): Base URL of the SDWAN Manager (inherited).
 
     Methods:
@@ -93,11 +95,26 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         """
         super().setup()
 
+        if self.controller_type != "SDWAN":
+            self.failed(
+                f"This test requires controller_type=SDWAN, but resolved "
+                f"controller_type={self.controller_type!r}"
+            )
+            return
+
         # Get shared SDWAN Manager auth data (jsessionid, xsrf_token)
         # This reads from file cache - no httpx client creation here
         try:
-            self.auth_data = SDWANManagerAuth.get_auth()
-        except (RuntimeError, ValueError) as e:
+            params = get_connection_params("SDWAN", self.auth_method)
+            if self.auth_method == "token":
+                self.auth_data = SDWANManagerAuth.get_token_auth(params["token"])
+            else:
+                self.auth_data = SDWANManagerAuth.get_session_auth(
+                    self.controller_url,
+                    params["username"],
+                    params["password"],
+                )
+        except (RuntimeError, ValueError, KeyError) as e:
             # Convert auth failures to FAILED (not ERRORED) - auth issues are
             # expected failure conditions, not infrastructure errors
             self.auth_data = {}  # Ensure attribute exists for cleanup code

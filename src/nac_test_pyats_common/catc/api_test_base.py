@@ -13,10 +13,10 @@ API call tracking for enhanced HTML reporting.
 """
 
 import asyncio
-import os
 from typing import Any
 
 import httpx
+from nac_test.core.controller import get_connection_params, get_insecure_flag
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -91,23 +91,34 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         """
         super().setup()
 
+        if self.controller_type != "CC":
+            self.failed(
+                f"This test requires controller_type=CC, but resolved "
+                f"controller_type={self.controller_type!r}"
+            )
+            return
+
+        self.controller_url: str = str(self.controller_url).rstrip("/")
+
+        # Determine SSL verification setting
+        self.verify_ssl = not get_insecure_flag("CC")
+
         # Get Catalyst Center auth data (token)
         # This reads from file cache - no httpx client creation here
         try:
-            self.auth_data = CatalystCenterAuth.get_auth()
-        except (RuntimeError, ValueError) as e:
+            params = get_connection_params("CC", self.auth_method)
+            self.auth_data = CatalystCenterAuth.get_token(
+                self.controller_url,
+                params["username"],
+                params["password"],
+                self.verify_ssl,
+            )
+        except (RuntimeError, ValueError, KeyError) as e:
             # Convert auth failures to FAILED (not ERRORED) - auth issues are
             # expected failure conditions, not infrastructure errors
             self.auth_data = {}  # Ensure attribute exists for cleanup code
             self.failed(f"Authentication failed: {e}")
             return
-
-        # Get controller URL from environment
-        self.controller_url = os.environ.get("CC_URL", "").rstrip("/")
-
-        # Determine SSL verification setting
-        insecure = os.environ.get("CC_INSECURE", "True").lower() in ("true", "1", "yes")
-        self.verify_ssl = not insecure
 
         # NOTE: Client creation is deferred to run_async_verification_test()
         # to avoid macOS fork() + httpx/SSL crash issues

@@ -7,10 +7,14 @@ This module provides authentication functionality for Cisco Catalyst Center
 (formerly DNA Center), which is the central management platform for enterprise
 networks. The authentication mechanism uses token-based login with Basic Auth.
 
-The module implements a two-tier API design:
+The module implements a multi-tier API design:
 1. _authenticate() - Low-level method that performs direct Catalyst Center
    authentication
-2. get_auth() - High-level method that leverages caching for efficient token reuse
+2. get_token() - Parameterized method that leverages caching for efficient
+   token reuse; used by consumers that already have connection details
+   resolved (e.g. via NACTestBase)
+3. get_auth() - High-level method that sources env vars via nac-test's
+   get_connection_params() and delegates to get_token()
 
 This design ensures efficient token management by reusing valid tokens and only
 re-authenticating when necessary, reducing unnecessary API calls to the controller.
@@ -22,16 +26,14 @@ Note on Fork Safety:
     that work correctly after fork().
 """
 
-import os
 from typing import Any
 
+from nac_test.core.controller import get_connection_params, get_insecure_flag
 from nac_test.pyats_core.common.auth_cache import AuthCache
 from nac_test.pyats_core.common.subprocess_auth import (
     SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
     execute_auth_subprocess,
 )
-
-from nac_test_pyats_common.common.env import require_env_vars
 
 # Default token lifetime for Catalyst Center authentication in seconds
 # Catalyst Center tokens are typically valid for 1 hour (3600 seconds) by default
@@ -50,15 +52,19 @@ AUTH_ENDPOINTS: list[str] = [
 class CatalystCenterAuth:
     """Catalyst Center-specific authentication implementation with token caching.
 
-    This class provides a two-tier API for Catalyst Center authentication:
+    This class provides a multi-tier API for Catalyst Center authentication:
 
     1. Low-level _authenticate() method: Directly authenticates with Catalyst Center
        using Basic Auth and returns token data along with expiration time. This is
        typically used by the caching layer and not called directly by consumers.
 
-    2. High-level get_auth() method: Provides cached token management, automatically
-       handling token renewal when expired. This is the primary method that consumers
-       should use for obtaining Catalyst Center tokens.
+    2. Parameterized get_token() method: Provides cached token management for
+       callers that already have connection details resolved (e.g. via
+       NACTestBase), automatically handling token renewal when expired.
+
+    3. High-level get_auth() method: Sources connection details from environment
+       variables via nac-test's get_connection_params() and delegates to
+       get_token(). This is the entry point for standalone (non-pyATS) usage.
 
     The authentication flow supports both:
     - Modern Catalyst Center 2.x: /api/system/v1/auth/token endpoint
@@ -209,16 +215,57 @@ else:
         return {"token": auth_result["token"]}, CATALYST_CENTER_TOKEN_LIFETIME_SECONDS
 
     @classmethod
+    def get_token(
+        cls, url: str, username: str, password: str, verify_ssl: bool = False
+    ) -> dict[str, Any]:
+        """Get Catalyst Center authentication data with automatic caching and renewal.
+
+        This is the parameterized entry point for consumers that already have
+        connection details resolved (e.g. via NACTestBase). It leverages the
+        AuthCache to efficiently manage token lifecycle, reusing valid tokens
+        and automatically renewing expired ones.
+
+        The method uses a cache key based on the controller type ("CC") and URL
+        to ensure proper token isolation between different Catalyst Center instances.
+
+        Args:
+            url: Base URL of the Catalyst Center (e.g., "https://catc.example.com").
+            username: Catalyst Center username for authentication.
+            password: Password for the specified Catalyst Center user account.
+            verify_ssl: Whether to verify SSL certificates. Defaults to False.
+
+        Returns:
+            A dictionary containing:
+                - token (str): The authentication token for API requests.
+                  Should be included as X-Auth-Token header in subsequent calls.
+
+        Raises:
+            SubprocessAuthError: If authentication fails due to invalid credentials,
+                network issues, connection timeouts, or Catalyst Center server errors.
+        """
+        url = url.rstrip("/")
+
+        def auth_wrapper() -> tuple[dict[str, Any], int]:
+            """Wrapper for authentication that captures closure variables."""
+            return cls._authenticate(url, username, password, verify_ssl)
+
+        # AuthCache.get_or_create returns dict[str, Any], but mypy can't verify this
+        # because nac_test lacks py.typed marker.
+        return AuthCache.get_or_create(  # type: ignore[no-any-return]
+            controller_type="CC",
+            url=url,
+            auth_func=auth_wrapper,
+        )
+
+    @classmethod
     def get_auth(cls) -> dict[str, Any]:
         """Get Catalyst Center authentication data with automatic caching and renewal.
 
         This is the primary method that consumers should use to obtain Catalyst Center
-        tokens. It leverages the AuthCache to efficiently manage token lifecycle,
-        reusing valid tokens and automatically renewing expired ones. This significantly
-        reduces the number of authentication requests to the Catalyst Center.
-
-        The method uses a cache key based on the controller type ("CC") and URL
-        to ensure proper token isolation between different Catalyst Center instances.
+        tokens when using environment variable configuration. It leverages the
+        AuthCache to efficiently manage token lifecycle, reusing valid tokens and
+        automatically renewing expired ones. This significantly reduces the number
+        of authentication requests to the Catalyst Center.
 
         Environment Variables Required:
             CC_URL: Base URL of the Catalyst Center
@@ -252,21 +299,9 @@ else:
             >>> # Use in API requests
             >>> headers = {"X-Auth-Token": auth_data["token"]}
         """
-        env = require_env_vars("CC_URL", "CC_USERNAME", "CC_PASSWORD")
-        url = env["CC_URL"].rstrip("/")
-        username = env["CC_USERNAME"]
-        password = env["CC_PASSWORD"]
-        insecure = os.environ.get("CC_INSECURE", "True").lower() in ("true", "1", "yes")
-        verify_ssl = not insecure  # CC_INSECURE=True means verify=False
+        params = get_connection_params("CC", "session")
+        verify_ssl = not get_insecure_flag("CC")
 
-        def auth_wrapper() -> tuple[dict[str, Any], int]:
-            """Wrapper for authentication that captures closure variables."""
-            return cls._authenticate(url, username, password, verify_ssl)
-
-        # AuthCache.get_or_create returns dict[str, Any], but mypy can't verify this
-        # because nac_test lacks py.typed marker.
-        return AuthCache.get_or_create(  # type: ignore[no-any-return]
-            controller_type="CC",
-            url=url,
-            auth_func=auth_wrapper,
+        return cls.get_token(
+            params["url"], params["username"], params["password"], verify_ssl
         )

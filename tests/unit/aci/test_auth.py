@@ -48,7 +48,7 @@ class TestGetAuthEnvironmentValidation:
             APICAuth.get_auth()
 
         assert "ACI_URL" in str(exc_info.value)
-        assert "Missing required environment variables" in str(exc_info.value)
+        assert "Missing required environment variable" in str(exc_info.value)
 
     def test_get_auth_missing_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when ACI_USERNAME is missing."""

@@ -28,7 +28,7 @@ Note on Fork Safety:
 
 from typing import Any
 
-from nac_test.core.controller import get_connection_params, get_insecure_flag
+from nac_test.core.controller import get_connection_params, should_verify_ssl
 from nac_test.pyats_core.common.auth_cache import AuthCache
 from nac_test.pyats_core.common.subprocess_auth import (
     SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
@@ -300,7 +300,7 @@ else:
             >>> headers = {"X-Auth-Token": auth_data["token"]}
         """
         params = get_connection_params("CC", "session")
-        verify_ssl = not get_insecure_flag("CC")
+        verify_ssl = should_verify_ssl("CC")
 
         return cls.get_token(
             params["url"], params["username"], params["password"], verify_ssl

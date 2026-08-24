@@ -29,6 +29,7 @@ def test_base(mocker: MockerFixture) -> SDWANManagerTestBase:
     """Create a SDWANManagerTestBase instance with mocked internals."""
     instance = SDWANManagerTestBase.__new__(SDWANManagerTestBase)
     instance.controller_url = "https://sdwan.example.com"
+    instance.verify_ssl = False  # Default for tests
 
     # Mock pool.get_client to capture the headers passed to it
     mock_pool = MagicMock()

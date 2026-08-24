@@ -22,7 +22,7 @@ Note on Fork Safety:
     that work correctly after fork().
 """
 
-from nac_test.core.controller import get_connection_params, get_insecure_flag
+from nac_test.core.controller import get_connection_params, should_verify_ssl
 from nac_test.pyats_core.common.auth_cache import AuthCache
 from nac_test.pyats_core.common.subprocess_auth import (
     SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
@@ -252,6 +252,6 @@ except Exception as e:
         """
         params = get_connection_params("ACI", "session")
         url = params["url"].rstrip("/")
-        verify_ssl = not get_insecure_flag("ACI")
+        verify_ssl = should_verify_ssl("ACI")
 
         return cls.get_token(url, params["username"], params["password"], verify_ssl)

@@ -17,7 +17,7 @@ import asyncio
 from typing import Any
 
 import httpx
-from nac_test.core.controller import get_connection_params
+from nac_test.core.controller import get_connection_params, should_verify_ssl
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -102,6 +102,16 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
             )
             return
 
+        _SUPPORTED_AUTH_METHODS = {"session", "token"}
+        if self.auth_method not in _SUPPORTED_AUTH_METHODS:
+            self.failed(
+                f"SDWAN adapter supports auth_methods {_SUPPORTED_AUTH_METHODS}, "
+                f"got {self.auth_method!r}"
+            )
+            return
+
+        self.verify_ssl = should_verify_ssl("SDWAN")
+
         # Get shared SDWAN Manager auth data (jsessionid, xsrf_token)
         # This reads from file cache - no httpx client creation here
         try:
@@ -140,13 +150,15 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
 
         Returns:
             httpx.AsyncClient: Configured client with SDWAN Manager auth headers,
-                base URL, and wrapped for automatic API call tracking. The client
-                has SSL verification disabled for lab environment compatibility.
+                base URL, and wrapped for automatic API call tracking. SSL verification
+                is controlled by the SDWAN_INSECURE env var (defaults to insecure for
+                lab compatibility).
 
         Note:
-            SSL verification is disabled (verify=False) to support lab environments
-            with self-signed certificates. For production environments, consider
-            enabling SSL verification with proper certificate management.
+            SSL verification can be disabled via SDWAN_INSECURE=True (default) to
+            support lab environments with self-signed certificates. For production
+            environments, set SDWAN_INSECURE=False to enable SSL verification with
+            proper certificate management.
         """
         headers: dict[str, str] = {"Content-Type": "application/json"}
 
@@ -164,9 +176,9 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         else:
             raise ValueError(f"Unsupported auth_method: {auth_method!r}")
 
-        # Get base client from pool with SSL verification disabled for lab compatibility
+        # Get base client from pool with SSL verification controlled by env var
         base_client = self.pool.get_client(
-            base_url=self.controller_url, headers=headers, verify=False
+            base_url=self.controller_url, headers=headers, verify=self.verify_ssl
         )
 
         # Use the generic tracking wrapper from base class

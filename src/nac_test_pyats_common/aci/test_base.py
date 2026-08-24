@@ -16,7 +16,7 @@ import asyncio
 from typing import Any
 
 import httpx
-from nac_test.core.controller import get_connection_params
+from nac_test.core.controller import get_connection_params, should_verify_ssl
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -88,6 +88,16 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
             )
             return
 
+        _SUPPORTED_AUTH_METHODS = {"session"}
+        if self.auth_method not in _SUPPORTED_AUTH_METHODS:
+            self.failed(
+                f"ACI adapter supports auth_methods {_SUPPORTED_AUTH_METHODS}, "
+                f"got {self.auth_method!r}"
+            )
+            return
+
+        self.verify_ssl = should_verify_ssl("ACI")
+
         # Get shared APIC token using file-based locking
         # This reads from file cache - no httpx client creation here
         try:
@@ -115,18 +125,20 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
 
         Returns:
             httpx.AsyncClient: Configured client with APIC authentication, base URL,
-                and wrapped for automatic API call tracking. The client has SSL
-                verification disabled for lab environment compatibility.
+                and wrapped for automatic API call tracking. SSL verification is
+                controlled by the ACI_INSECURE env var (defaults to insecure for
+                lab compatibility).
 
         Note:
-            SSL verification is disabled (verify=False) to support lab environments
-            with self-signed certificates. For production environments, consider
-            enabling SSL verification with proper certificate management.
+            SSL verification can be disabled via ACI_INSECURE=True (default) to
+            support lab environments with self-signed certificates. For production
+            environments, set ACI_INSECURE=False to enable SSL verification with
+            proper certificate management.
         """
         headers = {"Cookie": f"APIC-cookie={self.token}"}
-        # SSL verification disabled for lab environment compatibility
+        # SSL verification controlled by ACI_INSECURE env var (defaults to insecure for lab compatibility)
         client = self.pool.get_client(
-            base_url=self.controller_url, headers=headers, verify=False
+            base_url=self.controller_url, headers=headers, verify=self.verify_ssl
         )
 
         # Use the generic tracking wrapper from base class

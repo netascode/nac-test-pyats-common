@@ -668,30 +668,21 @@ class TestTokenAuth:
         with pytest.raises(ValueError, match="missing 'csrf' field"):
             SDWANManagerAuth.get_auth()
 
-    def test_session_auth_when_context_raises(
+    def test_context_error_propagates(
         self,
         mocker: MockerFixture,
         mock_controller_context: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Falls back to session auth when get_controller_context raises."""
+        """ValueError from get_controller_context propagates (no fallback)."""
         mock_controller_context.side_effect = ValueError("No context available")
 
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_USERNAME", "admin")
         monkeypatch.setenv("SDWAN_PASSWORD", "password123")
 
-        mock_cache = mocker.patch(
-            "nac_test_pyats_common.sdwan.auth.AuthCache.get_or_create"
-        )
-        mock_cache.return_value = {"jsessionid": "sess-123", "xsrf_token": "xsrf-abc"}
-
-        result = SDWANManagerAuth.get_auth()
-
-        assert result["auth_method"] == "session"
-        assert result["jsessionid"] == "sess-123"
-        assert result["xsrf_token"] == "xsrf-abc"
-        mock_cache.assert_called_once()
+        with pytest.raises(ValueError, match="No context available"):
+            SDWANManagerAuth.get_auth()
 
     def test_session_auth_includes_auth_method_key(
         self,

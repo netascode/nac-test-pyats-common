@@ -41,7 +41,7 @@ from typing import Any
 from nac_test.core.controller import (
     get_connection_params,
     get_controller_context,
-    get_insecure_flag,
+    should_verify_ssl,
 )
 from nac_test.pyats_core.common.auth_cache import AuthCache
 from nac_test.pyats_core.common.subprocess_auth import (
@@ -288,7 +288,7 @@ class SDWANManagerAuth:
 
         This is the primary method that consumers should use to obtain SDWAN Manager
         authentication data. It consults the credential set matched by nac-test's
-        detect_controller_type() to determine the authentication mechanism:
+        get_controller_context() to determine the authentication mechanism:
 
         - **Token auth** (auth_method="token"): Uses SDWAN_API_TOKEN directly.
           No session login required. Returns immediately with the bearer token.
@@ -345,13 +345,11 @@ class SDWANManagerAuth:
             'session'
             >>> headers = {"Cookie": f"JSESSIONID={auth_data['jsessionid']}"}
         """
-        # Determine auth method from controller context resolved by orchestrator
-        try:
-            ctx = get_controller_context()
-            auth_method = ctx.auth_method
-        except ValueError:
-            # No context available (standalone usage without orchestrator)
-            auth_method = "session"
+        # Determine auth method from controller context resolved by orchestrator.
+        # get_controller_context() has its own fallback path for standalone
+        # usage (env var scan), so no local fallback is needed here.
+        ctx = get_controller_context()
+        auth_method = ctx.auth_method
 
         params = get_connection_params("SDWAN", auth_method)
 
@@ -440,7 +438,7 @@ class SDWANManagerAuth:
             SubprocessAuthError: If authentication fails.
         """
         url = url.rstrip("/")
-        verify_ssl = not get_insecure_flag("SDWAN")
+        verify_ssl = should_verify_ssl("SDWAN")
 
         def auth_wrapper() -> tuple[dict[str, Any], int]:
             """Wrapper for authentication that captures closure variables."""

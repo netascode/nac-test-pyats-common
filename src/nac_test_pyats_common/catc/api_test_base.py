@@ -16,7 +16,7 @@ import asyncio
 from typing import Any
 
 import httpx
-from nac_test.core.controller import get_connection_params, get_insecure_flag
+from nac_test.core.controller import get_connection_params, should_verify_ssl
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -98,10 +98,18 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
             )
             return
 
+        _SUPPORTED_AUTH_METHODS = {"session"}
+        if self.auth_method not in _SUPPORTED_AUTH_METHODS:
+            self.failed(
+                f"CC adapter supports auth_methods {_SUPPORTED_AUTH_METHODS}, "
+                f"got {self.auth_method!r}"
+            )
+            return
+
         self.controller_url: str = str(self.controller_url).rstrip("/")
 
         # Determine SSL verification setting
-        self.verify_ssl = not get_insecure_flag("CC")
+        self.verify_ssl = should_verify_ssl("CC")
 
         # Get Catalyst Center auth data (token)
         # This reads from file cache - no httpx client creation here

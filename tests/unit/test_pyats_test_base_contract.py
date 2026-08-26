@@ -153,3 +153,55 @@ def test_setup_fails_on_controller_type_mismatch_via_context(
 
     assert f"controller_type={expected_controller_type}" in str(exc_info.value)
     assert context_controller_type in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("test_base_cls", "controller_type", "unsupported_auth_method"),
+    [
+        (APICTestBase, "ACI", "token"),
+        (SDWANManagerTestBase, "SDWAN", "certificate"),
+        (CatalystCenterTestBase, "CC", "token"),
+    ],
+    ids=["aci", "sdwan", "catc"],
+)
+def test_setup_fails_on_unsupported_auth_method(
+    test_base_cls: type[aetest.Testcase],
+    controller_type: str,
+    unsupported_auth_method: str,
+    make_pyats_instance: Callable[[type], aetest.Testcase],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """setup() fails when auth_method is not in _SUPPORTED_AUTH_METHODS."""
+    ctx = ControllerContext(
+        controller_type=controller_type,
+        auth_method=unsupported_auth_method,
+    )
+    monkeypatch.setenv("NAC_TEST_CONTROLLER_CONTEXT", ctx.to_json())
+
+    # Provide URL env var so get_controller_url() succeeds in the parent
+    monkeypatch.setenv(f"{controller_type}_URL", "https://example.com")
+
+    test_instance = make_pyats_instance(test_base_cls)
+
+    # Mock get_connection_params since the unsupported auth_method may not
+    # exist in the controller registry — we're testing the subclass guard
+    dummy_params = {
+        "username": "admin",
+        "password": "pass",
+        "token": "tok",
+    }
+    with (
+        patch.object(
+            test_instance,
+            "load_data_model",
+            return_value={"test": "data"},
+        ),
+        patch(
+            "nac_test.pyats_core.common.base_test.get_connection_params",
+            return_value=dummy_params,
+        ),
+    ):
+        with pytest.raises(AEtestFailedSignal) as exc_info:
+            test_instance.setup()
+
+    assert unsupported_auth_method in str(exc_info.value)

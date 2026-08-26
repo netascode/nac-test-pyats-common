@@ -103,7 +103,10 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
         try:
             params = get_connection_params("ACI", self.auth_method)
             self.token = APICAuth.get_token(
-                self.controller_url, params["username"], params["password"]
+                self.controller_url,
+                params["username"],
+                params["password"],
+                self.verify_ssl,
             )
         except (RuntimeError, ValueError, KeyError) as e:
             # Convert auth failures to FAILED (not ERRORED) - auth issues are

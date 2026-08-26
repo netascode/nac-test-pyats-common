@@ -17,7 +17,7 @@ import asyncio
 from typing import Any
 
 import httpx
-from nac_test.core.controller import get_connection_params, should_verify_ssl
+from nac_test.core.controller import should_verify_ssl
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -115,14 +115,15 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         # Get shared SDWAN Manager auth data (jsessionid, xsrf_token)
         # This reads from file cache - no httpx client creation here
         try:
-            params = get_connection_params("SDWAN", self.auth_method)
             if self.auth_method == "token":
-                self.auth_data = SDWANManagerAuth.get_token_auth(params["token"])
+                self.auth_data = SDWANManagerAuth.get_token_auth(
+                    self.connection_params["token"]
+                )
             else:
                 self.auth_data = SDWANManagerAuth.get_session_auth(
                     self.controller_url,
-                    params["username"],
-                    params["password"],
+                    self.username,
+                    self.password,
                 )
         except (RuntimeError, ValueError, KeyError) as e:
             # Convert auth failures to FAILED (not ERRORED) - auth issues are

@@ -16,7 +16,7 @@ import asyncio
 from typing import Any
 
 import httpx
-from nac_test.core.controller import get_connection_params, should_verify_ssl
+from nac_test.core.controller import should_verify_ssl
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -101,11 +101,10 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
         # Get shared APIC token using file-based locking
         # This reads from file cache - no httpx client creation here
         try:
-            params = get_connection_params("ACI", self.auth_method)
             self.token = APICAuth.get_token(
                 self.controller_url,
-                params["username"],
-                params["password"],
+                self.username,
+                self.password,
                 self.verify_ssl,
             )
         except (RuntimeError, ValueError, KeyError) as e:

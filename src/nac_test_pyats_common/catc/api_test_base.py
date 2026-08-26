@@ -16,7 +16,7 @@ import asyncio
 from typing import Any
 
 import httpx
-from nac_test.core.controller import get_connection_params, should_verify_ssl
+from nac_test.core.controller import should_verify_ssl
 from nac_test.pyats_core.common.base_test import (
     NACTestBase,  # type: ignore[import-untyped]
 )
@@ -114,11 +114,10 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         # Get Catalyst Center auth data (token)
         # This reads from file cache - no httpx client creation here
         try:
-            params = get_connection_params("CC", self.auth_method)
             self.auth_data = CatalystCenterAuth.get_token(
                 self.controller_url,
-                params["username"],
-                params["password"],
+                self.username,
+                self.password,
                 self.verify_ssl,
             )
         except (RuntimeError, ValueError, KeyError) as e:

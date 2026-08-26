@@ -29,7 +29,7 @@ keywords = ["cisco", "network", "testing", "pyats", "nac", "aci", "sdwan", "cata
 dependencies = [
     "filelock>=3.25.2",
     "httpx~=0.28",  # HTTP client for auth
-    "nac-test",  # version pinned via [tool.uv.sources] during bridge period
+    "nac-test",  # TODO: restore >=2.1.0 floor after nac-test bridge release
 ]
 
 [project.optional-dependencies]

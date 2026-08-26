@@ -136,7 +136,8 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
             proper certificate management.
         """
         headers = {"Cookie": f"APIC-cookie={self.token}"}
-        # SSL verification controlled by ACI_INSECURE env var (defaults to insecure for lab compatibility)
+        # SSL verification controlled by ACI_INSECURE env var
+        # (defaults to insecure for lab compatibility)
         client = self.pool.get_client(
             base_url=self.controller_url, headers=headers, verify=self.verify_ssl
         )

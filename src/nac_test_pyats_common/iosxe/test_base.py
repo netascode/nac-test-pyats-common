@@ -50,7 +50,7 @@ class IOSXETestBase(SSHTestBase):  # type: ignore[misc]
         try:
             ctx = get_controller_context()
             controller_type = ctx.controller_type
-        except ValueError:
+        except (ValueError, KeyError):
             controller_type = "UNKNOWN"
 
         # If no controller detected, infer from data model

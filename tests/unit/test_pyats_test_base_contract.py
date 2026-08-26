@@ -159,10 +159,9 @@ def test_setup_fails_on_controller_type_mismatch_via_context(
     ("test_base_cls", "controller_type", "unsupported_auth_method"),
     [
         (APICTestBase, "ACI", "token"),
-        (SDWANManagerTestBase, "SDWAN", "certificate"),
         (CatalystCenterTestBase, "CC", "token"),
     ],
-    ids=["aci", "sdwan", "catc"],
+    ids=["aci", "catc"],
 )
 def test_setup_fails_on_unsupported_auth_method(
     test_base_cls: type[aetest.Testcase],

@@ -49,7 +49,7 @@ class TestAPICTestBaseSetup:
 
         assert test_instance.token == "fake-token"
         mock_get_token.assert_called_once_with(
-            "https://apic.example.com", "admin", "password"
+            "https://apic.example.com", "admin", "password", False
         )
 
     def test_setup_converts_auth_failure_to_failed(

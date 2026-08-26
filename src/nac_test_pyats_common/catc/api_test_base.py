@@ -71,6 +71,9 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
     client: httpx.AsyncClient | None = None  # MUST declare at class level
     auth_data: dict[str, Any]  # Declared at class level for type checker compatibility
 
+    EXPECTED_CONTROLLER_TYPE = "CC"
+    SUPPORTED_AUTH_METHODS = {"session"}
+
     @aetest.setup  # type: ignore[misc, untyped-decorator]
     def setup(self) -> None:
         """Setup method that extends the generic base class setup.
@@ -90,21 +93,6 @@ class CatalystCenterTestBase(NACTestBase):  # type: ignore[misc]
         across parallel test execution.
         """
         super().setup()
-
-        if self.controller_type != "CC":
-            self.failed(
-                f"This test requires controller_type=CC, but resolved "
-                f"controller_type={self.controller_type!r}"
-            )
-            return
-
-        _SUPPORTED_AUTH_METHODS = {"session"}
-        if self.auth_method not in _SUPPORTED_AUTH_METHODS:
-            self.failed(
-                f"CC adapter supports auth_methods {_SUPPORTED_AUTH_METHODS}, "
-                f"got {self.auth_method!r}"
-            )
-            return
 
         self.controller_url: str = str(self.controller_url).rstrip("/")
 

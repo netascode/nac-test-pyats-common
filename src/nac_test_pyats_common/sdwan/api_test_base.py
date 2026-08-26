@@ -75,6 +75,9 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
     client: httpx.AsyncClient | None = None  # MUST declare at class level
     auth_data: dict[str, Any]  # Declared at class level for type checker compatibility
 
+    EXPECTED_CONTROLLER_TYPE = "SDWAN"
+    SUPPORTED_AUTH_METHODS = {"session", "token"}
+
     @aetest.setup  # type: ignore[misc, untyped-decorator]
     def setup(self) -> None:
         """Setup method that extends the generic base class setup.
@@ -94,21 +97,6 @@ class SDWANManagerTestBase(NACTestBase):  # type: ignore[misc]
         across parallel test execution.
         """
         super().setup()
-
-        if self.controller_type != "SDWAN":
-            self.failed(
-                f"This test requires controller_type=SDWAN, but resolved "
-                f"controller_type={self.controller_type!r}"
-            )
-            return
-
-        _SUPPORTED_AUTH_METHODS = {"session", "token"}
-        if self.auth_method not in _SUPPORTED_AUTH_METHODS:
-            self.failed(
-                f"SDWAN adapter supports auth_methods {_SUPPORTED_AUTH_METHODS}, "
-                f"got {self.auth_method!r}"
-            )
-            return
 
         self.verify_ssl = should_verify_ssl("SDWAN")
 

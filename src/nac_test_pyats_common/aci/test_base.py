@@ -62,6 +62,9 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
 
     client: httpx.AsyncClient | None = None  # MUST declare at class level
 
+    EXPECTED_CONTROLLER_TYPE = "ACI"
+    SUPPORTED_AUTH_METHODS = {"session"}
+
     @aetest.setup  # type: ignore[misc, untyped-decorator]
     def setup(self) -> None:
         """Setup method that extends the generic base class setup.
@@ -80,21 +83,6 @@ class APICTestBase(NACTestBase):  # type: ignore[misc]
         across parallel test execution.
         """
         super().setup()
-
-        if self.controller_type != "ACI":
-            self.failed(
-                f"This test requires controller_type=ACI, but resolved "
-                f"controller_type={self.controller_type!r}"
-            )
-            return
-
-        _SUPPORTED_AUTH_METHODS = {"session"}
-        if self.auth_method not in _SUPPORTED_AUTH_METHODS:
-            self.failed(
-                f"ACI adapter supports auth_methods {_SUPPORTED_AUTH_METHODS}, "
-                f"got {self.auth_method!r}"
-            )
-            return
 
         self.verify_ssl = should_verify_ssl("ACI")
 

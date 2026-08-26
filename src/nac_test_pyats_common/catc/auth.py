@@ -28,8 +28,8 @@ Note on Fork Safety:
 
 from typing import Any
 
+from nac_test.core.auth_cache import AuthCache
 from nac_test.core.controller import get_connection_params, should_verify_ssl
-from nac_test.pyats_core.common.auth_cache import AuthCache
 from nac_test.pyats_core.common.subprocess_auth import (
     SubprocessAuthError,  # noqa: F401 - re-exported for callers to catch
     execute_auth_subprocess,

@@ -203,4 +203,7 @@ def test_setup_fails_on_unsupported_auth_method(
         with pytest.raises(AEtestFailedSignal) as exc_info:
             test_instance.setup()
 
+    # Verify we hit the auth_method guard (not a network error whose message
+    # might accidentally contain the auth method string, e.g. "/auth/token")
+    assert "supports auth_methods" in str(exc_info.value)
     assert unsupported_auth_method in str(exc_info.value)

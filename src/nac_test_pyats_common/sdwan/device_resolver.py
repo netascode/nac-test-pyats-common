@@ -19,6 +19,7 @@ Device Fields Returned:
 """
 
 import logging
+import os
 from typing import Any
 
 from nac_test_pyats_common.common import BaseDeviceResolver
@@ -83,17 +84,23 @@ class SDWANDeviceResolver(BaseDeviceResolver):
         """Navigate SD-WAN schema: sdwan.sites[].routers[].
 
         Traverses the SD-WAN data model structure to find all router
-        devices across all sites.
+        devices across all sites. When NAC_TEST_DEVICE_TAG is set,
+        only routers whose ``tags`` list contains that value are included.
 
         Returns:
             List of router dictionaries from all sites.
         """
         devices: list[dict[str, Any]] = []
         sdwan_data = self.data_model.get("sdwan", {})
+        device_tag = os.environ.get("NAC_TEST_DEVICE_TAG")
 
         for site in sdwan_data.get("sites", []):
-            routers = site.get("routers", [])
-            devices.extend(routers)
+            for router in site.get("routers", []):
+                if device_tag:
+                    tags = router.get("tags") or []
+                    if device_tag not in tags:
+                        continue
+                devices.append(router)
 
         return devices
 

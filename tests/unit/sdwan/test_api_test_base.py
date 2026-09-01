@@ -98,3 +98,71 @@ class TestGetSDWANManagerClientHeaders:
 
         with pytest.raises(ValueError, match="Unsupported auth_method"):
             test_base.get_sdwan_manager_client()
+
+
+class TestGetDevicesFromDataModelTagFiltering:
+    """Test NAC_TEST_DEVICE_TAG filtering in get_devices_from_data_model()."""
+
+    @pytest.fixture
+    def tagged_instance(self) -> SDWANManagerTestBase:
+        """Create an instance with a data model containing tagged routers."""
+        instance = SDWANManagerTestBase.__new__(SDWANManagerTestBase)
+        instance.data_model = {
+            "sdwan": {
+                "sites": [
+                    {
+                        "id": 100,
+                        "routers": [
+                            {
+                                "tags": ["migration"],
+                                "device_variables": {
+                                    "system_ip": "10.0.0.1",
+                                    "site_id": 100,
+                                    "host_name": "tagged-router",
+                                },
+                            },
+                            {
+                                "device_variables": {
+                                    "system_ip": "10.0.0.2",
+                                    "site_id": 100,
+                                    "host_name": "untagged-router",
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }
+        }
+        return instance
+
+    def test_no_tag_returns_all(
+        self,
+        tagged_instance: SDWANManagerTestBase,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Without NAC_TEST_DEVICE_TAG, all devices are returned."""
+        monkeypatch.delenv("NAC_TEST_DEVICE_TAG", raising=False)
+        devices = tagged_instance.get_devices_from_data_model()
+        assert len(devices) == 2
+
+    def test_tag_filters_devices(
+        self,
+        tagged_instance: SDWANManagerTestBase,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With NAC_TEST_DEVICE_TAG, only matching devices are returned."""
+        monkeypatch.setenv("NAC_TEST_DEVICE_TAG", "migration")
+        devices = tagged_instance.get_devices_from_data_model()
+        assert len(devices) == 1
+        assert devices[0]["system_ip"] == "10.0.0.1"
+        assert devices[0]["hostname"] == "tagged-router"
+
+    def test_nonexistent_tag_returns_empty(
+        self,
+        tagged_instance: SDWANManagerTestBase,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A tag no router has returns empty list."""
+        monkeypatch.setenv("NAC_TEST_DEVICE_TAG", "nonexistent")
+        devices = tagged_instance.get_devices_from_data_model()
+        assert len(devices) == 0

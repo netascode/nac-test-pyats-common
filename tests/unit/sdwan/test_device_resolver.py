@@ -684,3 +684,112 @@ class TestErrorHandlingAndSkippedDevices:
         assert "system_hostname" in caplog.text
         assert "host_name" in caplog.text
         assert "ABC123" in caplog.text
+
+
+class TestDeviceTagFiltering:
+    """Test NAC_TEST_DEVICE_TAG filtering in navigate_to_devices()."""
+
+    @pytest.fixture  # type: ignore[untyped-decorator]
+    def tagged_data_model(self) -> dict[str, Any]:
+        """Data model with tags on some routers."""
+        return {
+            "sdwan": {
+                "management_ip_variable": "vpn511_int1_if_ipv4_address",
+                "sites": [
+                    {
+                        "name": "site1",
+                        "routers": [
+                            {
+                                "chassis_id": "TAGGED1",
+                                "tags": ["migration"],
+                                "device_variables": {
+                                    "system_hostname": "tagged-router1",
+                                    "vpn511_int1_if_ipv4_address": "10.1.1.1/32",
+                                },
+                            },
+                            {
+                                "chassis_id": "UNTAGGED1",
+                                "device_variables": {
+                                    "system_hostname": "untagged-router1",
+                                    "vpn511_int1_if_ipv4_address": "10.1.1.2/32",
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        "name": "site2",
+                        "routers": [
+                            {
+                                "chassis_id": "TAGGED2",
+                                "tags": ["migration", "datacenter"],
+                                "device_variables": {
+                                    "system_hostname": "tagged-router2",
+                                    "vpn511_int1_if_ipv4_address": "10.2.1.1/32",
+                                },
+                            },
+                        ],
+                    },
+                ],
+            }
+        }
+
+    def test_no_tag_returns_all_devices(
+        self,
+        tagged_data_model: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Without NAC_TEST_DEVICE_TAG, all routers are returned."""
+        monkeypatch.delenv("NAC_TEST_DEVICE_TAG", raising=False)
+        resolver = SDWANDeviceResolver(tagged_data_model)
+        devices = resolver.navigate_to_devices()
+        assert len(devices) == 3
+
+    def test_tag_filters_to_matching_devices(
+        self,
+        tagged_data_model: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With NAC_TEST_DEVICE_TAG set, only matching routers are returned."""
+        monkeypatch.setenv("NAC_TEST_DEVICE_TAG", "migration")
+        resolver = SDWANDeviceResolver(tagged_data_model)
+        devices = resolver.navigate_to_devices()
+        assert len(devices) == 2
+        chassis_ids = [d["chassis_id"] for d in devices]
+        assert "TAGGED1" in chassis_ids
+        assert "TAGGED2" in chassis_ids
+        assert "UNTAGGED1" not in chassis_ids
+
+    def test_tag_filters_to_specific_tag(
+        self,
+        tagged_data_model: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Filtering by a tag only some routers have returns only those."""
+        monkeypatch.setenv("NAC_TEST_DEVICE_TAG", "datacenter")
+        resolver = SDWANDeviceResolver(tagged_data_model)
+        devices = resolver.navigate_to_devices()
+        assert len(devices) == 1
+        assert devices[0]["chassis_id"] == "TAGGED2"
+
+    def test_nonexistent_tag_returns_empty(
+        self,
+        tagged_data_model: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A tag that no router has returns an empty list."""
+        monkeypatch.setenv("NAC_TEST_DEVICE_TAG", "nonexistent")
+        resolver = SDWANDeviceResolver(tagged_data_model)
+        devices = resolver.navigate_to_devices()
+        assert len(devices) == 0
+
+    def test_router_with_no_tags_field_excluded(
+        self,
+        tagged_data_model: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Routers without a 'tags' field are excluded when filtering is active."""
+        monkeypatch.setenv("NAC_TEST_DEVICE_TAG", "migration")
+        resolver = SDWANDeviceResolver(tagged_data_model)
+        devices = resolver.navigate_to_devices()
+        chassis_ids = [d["chassis_id"] for d in devices]
+        assert "UNTAGGED1" not in chassis_ids

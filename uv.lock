@@ -1993,7 +1993,7 @@ wheels = [
 [[package]]
 name = "nac-test"
 version = "2.0.0"
-source = { git = "https://github.com/netascode/nac-test.git?branch=feat%2F856-controller-resolution-refactor#995af42e67a1148947ebd3f69cae1b54190e46a7" }
+source = { git = "https://github.com/netascode/nac-test.git?branch=feat%2F856-controller-resolution-refactor#8ad115dff4ee55f9fc3e7da30842f034d81b4c77" }
 dependencies = [
     { name = "aiofiles" },
     { name = "asyncssh" },

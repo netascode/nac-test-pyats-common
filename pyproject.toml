@@ -29,7 +29,7 @@ keywords = ["cisco", "network", "testing", "pyats", "nac", "aci", "sdwan", "cata
 dependencies = [
     "filelock>=3.25.2",
     "httpx~=0.28",  # HTTP client for auth
-    "nac-test",  # TODO: restore >=2.1.0 floor after nac-test bridge release
+    "nac-test>=2.1.0b1",  # TODO: remove b1 notation post 2.1.0 release
 ]
 
 [project.optional-dependencies]
@@ -57,10 +57,6 @@ Issues = "https://github.com/netascode/nac-test-pyats-common/issues"
 override-dependencies = [
     "pytest-cov>=7.1",
 ]
-
-[tool.uv.sources]
-# Temporary: use nac-test from feature branch until bridge release is published
-nac-test = { git = "https://github.com/netascode/nac-test.git", branch = "feat/856-controller-resolution-refactor" }
 
 [build-system]
 requires = ["hatchling"]

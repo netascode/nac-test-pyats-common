@@ -1992,8 +1992,8 @@ wheels = [
 
 [[package]]
 name = "nac-test"
-version = "2.0.0"
-source = { git = "https://github.com/netascode/nac-test.git?branch=feat%2F856-controller-resolution-refactor#8ad115dff4ee55f9fc3e7da30842f034d81b4c77" }
+version = "2.1.0b1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "asyncssh" },
@@ -2019,6 +2019,10 @@ dependencies = [
     { name = "scrapli-netconf" },
     { name = "typer" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/90/67/fbbf5e4cf95c5d0013752a433bc644454c27c4c2fc8269776fcd587b3699/nac_test-2.1.0b1.tar.gz", hash = "sha256:9227d48e106a962e151d9a915ae3a60661aebd63dc1aea391c2b3294768071ad", size = 975241, upload-time = "2026-09-02T20:23:49.39Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/a0/9e84ca48044f34a67f734b54a24fff804eb9be80abc4cdd78224840c7bfd/nac_test-2.1.0b1-py3-none-any.whl", hash = "sha256:dec65461389cf9fe3dab59eb7d0a86a24116575c961028cdba51ee680784a844", size = 301882, upload-time = "2026-09-02T20:23:47.699Z" },
 ]
 
 [[package]]
@@ -2055,7 +2059,7 @@ requires-dist = [
     { name = "filelock", specifier = ">=3.25.2" },
     { name = "httpx", specifier = "~=0.28" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.17.1" },
-    { name = "nac-test", git = "https://github.com/netascode/nac-test.git?branch=feat%2F856-controller-resolution-refactor" },
+    { name = "nac-test", specifier = ">=2.1.0b1" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },

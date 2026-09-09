@@ -10,7 +10,16 @@ import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from pyats import aetest  # type: ignore[import-untyped]
 
-CONTROLLER_ENV_PREFIXES = ("ACI_", "SDWAN_", "CC_", "MERAKI_", "FMC_", "ISE_", "IOSXE_")
+CONTROLLER_ENV_PREFIXES = (
+    "ACI_",
+    "SDWAN_",
+    "CC_",
+    "MERAKI_",
+    "FMC_",
+    "ISE_",
+    "IOSXE_",
+    "NXOS_",
+)
 
 
 @pytest.fixture(autouse=True)

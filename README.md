@@ -3,8 +3,6 @@
 
 # nac-test-pyats-common
 
-> **⚠️ INITIAL DEVELOPMENT**: This package is under active initial development and not yet ready for production use.
-
 A shared library consolidating duplicated PyATS testing infrastructure across NAC (Network as Code) architecture repositories. This package serves as a Layer 2 adapter between architecture-specific test repositories (ACI, SD-WAN, Catalyst Center) and the core nac-test framework.
 
 ## Overview

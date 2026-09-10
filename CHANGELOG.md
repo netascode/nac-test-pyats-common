@@ -5,13 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0b1] - 2026-09-09
+## Unreleased
 
 ### Added
 
-- **NX-OS Architecture Adapter** ([#41](https://github.com/netascode/nac-test-pyats-common/pull/41))
-  - `NXOSDeviceResolver` for D2D SSH device resolution from `nxos.devices[]` schema
-  - `NXOSTestBase` for NX-OS SSH/D2D operational testing with learning mode support
+- **FTD/FMC Architecture Adapter for D2D/SSH** ([#43](https://github.com/netascode/nac-test-pyats-common/pull/43))
+- **NX-OS Architecture Adapter for D2D/SSH** ([#41](https://github.com/netascode/nac-test-pyats-common/pull/41))
 - **SD-WAN Data Model Device Helper** ([#37](https://github.com/netascode/nac-test-pyats-common/pull/37))
   - Added `get_devices_from_data_model()` to `SDWANManagerTestBase` to extract `system_ip`, `site_id`, and `hostname` from NaC SD-WAN schema (`sdwan.sites[].routers[].device_variables`)
 - **SD-WAN Token Authentication Support** ([#33](https://github.com/netascode/nac-test-pyats-common/pull/33))

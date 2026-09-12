@@ -9,6 +9,7 @@ This module tests the base device resolver functionality including:
 - Full resolution flow
 """
 
+import json
 from typing import Any
 from unittest.mock import patch
 
@@ -1078,3 +1079,136 @@ class TestExtractDeviceIdDefault:
         assert len(devices) == 1
         assert devices[0]["device_id"] == "SN123456"
         assert devices[0]["hostname"] == "test-router"
+
+
+class TestDeviceFilterIntegration:
+    """Test device filtering integration via BaseDeviceResolver."""
+
+    @pytest.fixture
+    def filter_data_model(self) -> dict[str, Any]:
+        """Provide a mock data model for filtering tests."""
+        return {
+            "mock": {
+                "devices": [
+                    {
+                        "device_id": "d1",
+                        "hostname": "leaf1",
+                        "host": "10.1.1.1",
+                        "os": "iosxe",
+                        "role": "leaf",
+                        "site": "sjc",
+                        "bgp": {"asn": 65001},
+                    },
+                    {
+                        "device_id": "d2",
+                        "hostname": "leaf2",
+                        "host": "10.1.1.2",
+                        "os": "iosxe",
+                        "role": "leaf",
+                        "site": "fra",
+                        "bgp": {"asn": 65002},
+                    },
+                    {
+                        "device_id": "d3",
+                        "hostname": "spine1",
+                        "host": "10.1.1.3",
+                        "os": "iosxe",
+                        "role": "spine",
+                        "site": "sjc",
+                        "bgp": {"asn": 65001},
+                    },
+                ]
+            }
+        }
+
+    @pytest.mark.parametrize(
+        ("filter_exprs", "expected_hostnames"),
+        [
+            ([{"field": "hostname", "operator": "=", "value": "leaf1"}], ["leaf1"]),
+            ([{"field": "role", "operator": "=", "value": "leaf"}], ["leaf1", "leaf2"]),
+            ([{"field": "bgp.asn", "operator": "=", "value": "65002"}], ["leaf2"]),
+            (
+                [
+                    {"field": "role", "operator": "=", "value": "leaf"},
+                    {"field": "site", "operator": "=", "value": "sjc"},
+                ],
+                ["leaf1"],
+            ),
+            (
+                [{"field": "hostname", "operator": "=~", "value": "^leaf[1-2]$"}],
+                ["leaf1", "leaf2"],
+            ),
+            (
+                [{"field": "role", "operator": "!=", "value": "spine"}],
+                ["leaf1", "leaf2"],
+            ),
+            ([{"field": "hostname", "operator": "=", "value": "nonexistent"}], []),
+        ],
+        ids=[
+            "virtual_field_hostname",
+            "raw_field_role",
+            "nested_field_bgp_asn",
+            "multiple_and_role_site",
+            "regex_match_hostname",
+            "negation_not_equal_spine",
+            "no_match_nonexistent_hostname",
+        ],
+    )
+    def test_filter_criteria(
+        self,
+        filter_data_model: dict[str, Any],
+        mock_credentials: None,
+        monkeypatch: pytest.MonkeyPatch,
+        filter_exprs: list[dict[str, str]],
+        expected_hostnames: list[str],
+    ) -> None:
+        """Test device filtering across various filter criteria."""
+        monkeypatch.setenv("NAC_TEST_DEVICE_FILTER_JSON", json.dumps(filter_exprs))
+
+        resolver = MockDeviceResolver(filter_data_model)
+        devices = resolver.get_resolved_inventory()
+
+        assert [d["hostname"] for d in devices] == expected_hostnames
+        assert resolver.filter_diagnostics is not None
+        assert resolver.filter_diagnostics["count_before"] == 3
+        assert resolver.filter_diagnostics["count_after"] == len(expected_hostnames)
+        assert resolver.filter_diagnostics["unknown_fields"] == []
+
+    def test_filter_unknown_field(
+        self,
+        filter_data_model: dict[str, Any],
+        mock_credentials: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test filtering by unknown field returns empty list and diagnostics."""
+        filters_json = json.dumps(
+            [{"field": "nonexistent_field", "operator": "=", "value": "foo"}]
+        )
+        monkeypatch.setenv("NAC_TEST_DEVICE_FILTER_JSON", filters_json)
+
+        resolver = MockDeviceResolver(filter_data_model)
+        devices = resolver.get_resolved_inventory()
+
+        assert len(devices) == 0
+        assert resolver.filter_diagnostics is not None
+        assert resolver.filter_diagnostics["unknown_fields"] == ["nonexistent_field"]
+
+    def test_filter_disabled_when_nac_test_unavailable(
+        self,
+        filter_data_model: dict[str, Any],
+        mock_credentials: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test that filtering is skipped when nac-test is not available."""
+        import nac_test_pyats_common.common.base_device_resolver as resolver_mod
+
+        monkeypatch.setattr(resolver_mod, "ENV_DEVICE_FILTER_JSON", None)
+        monkeypatch.setenv(
+            "NAC_TEST_DEVICE_FILTER_JSON",
+            json.dumps([{"field": "hostname", "operator": "=", "value": "leaf1"}]),
+        )
+
+        resolver = MockDeviceResolver(filter_data_model)
+        devices = resolver.get_resolved_inventory()
+
+        assert len(devices) == 3

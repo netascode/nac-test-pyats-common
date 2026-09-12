@@ -12,9 +12,23 @@ import ipaddress
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections import ChainMap
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Temporary import guard for device filter engine from nac-test (>=2.1.0).
+# Note: This import guard will be removed prior to FCS when released in lock-step
+# with nac-test>=2.1.0.
+try:
+    from nac_test.core.constants import ENV_DEVICE_FILTER_JSON
+    from nac_test.utils.device_filter import (
+        apply_all,
+        filters_from_json,
+        referenced_root_fields,
+    )
+except ImportError:
+    ENV_DEVICE_FILTER_JSON = None  # type: ignore[assignment]
 
 
 class BaseDeviceResolver(ABC):
@@ -72,17 +86,92 @@ class BaseDeviceResolver(ABC):
         """
         self.data_model = data_model
         self.skipped_devices: list[dict[str, str]] = []
+        self.filter_diagnostics: dict[str, Any] | None = None
         logger.debug(f"Initialized {self.get_architecture_name()} resolver")
+
+    def _build_virtual_fields(
+        self, device_data: dict[str, Any], needed_roots: set[str]
+    ) -> dict[str, Any]:
+        """Compute virtual fields lazily for device filtering."""
+        virtual: dict[str, Any] = {}
+        if "hostname" in needed_roots:
+            try:
+                virtual["hostname"] = self.extract_hostname(device_data)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                pass
+        if "host" in needed_roots:
+            try:
+                virtual["host"] = self.extract_host_ip(device_data)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                pass
+        if "os" in needed_roots:
+            try:
+                os_info = self.extract_os_platform_type(device_data)
+                if isinstance(os_info, dict) and "os" in os_info:
+                    virtual["os"] = os_info["os"]
+            except (KeyError, ValueError, TypeError, AttributeError):
+                pass
+        if "device_id" in needed_roots:
+            try:
+                virtual["device_id"] = self.extract_device_id(device_data)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                pass
+        return virtual
+
+    def _apply_device_filters(
+        self, all_devices: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Filter raw device data models using active --device-filter criteria.
+
+        Overlays virtual canonical fields (such as 'hostname', 'host'/'ip', 'os',
+        'device_id') on top of raw device dictionaries using ChainMap, then delegates
+        filter evaluation to nac_test's device_filter engine.
+        """
+        filter_json = os.environ.get(ENV_DEVICE_FILTER_JSON)  # type: ignore[arg-type]
+        if not filter_json:
+            return all_devices
+
+        filters = filters_from_json(filter_json)
+        if not filters:
+            return all_devices
+
+        needed_roots = referenced_root_fields(filters)
+        # ChainMap overlays computed virtual fields on top of raw data model dict.
+        # This allows filters on canonical attributes (e.g. 'hostname') as well as
+        # raw architecture-specific model keys (e.g. 'role', 'tags') to resolve.
+        device_mappings = [
+            ChainMap(self._build_virtual_fields(d, needed_roots), d)
+            for d in all_devices
+        ]
+
+        result = apply_all(device_mappings, filters)
+        self.filter_diagnostics = {
+            "count_before": len(all_devices),
+            "count_after": len(result.matched),
+            "unknown_fields": result.unknown_fields,
+            "keys_seen": result.keys_seen,
+            "filters": [str(f) for f in filters],
+        }
+
+        if result.unknown_fields:
+            return []
+
+        return [
+            d
+            for d, dm in zip(all_devices, device_mappings, strict=False)
+            if all(f.matches(dm) for f in filters)
+        ]
 
     def get_resolved_inventory(self) -> list[dict[str, Any]]:
         """Get resolved device inventory ready for SSH connection.
 
         This is the main entry point. It:
         1. Navigates the data model to find device data
-        2. Extracts hostname and management IP from each device
-        3. Sets OS type (architecture-specific, e.g., hardcoded to 'iosxe' for SD-WAN)
-        4. Injects SSH credential environment variable references
-        5. Returns list of device dicts ready for nac-test
+        2. Applies --device-filter if present (before validation/build)
+        3. Extracts hostname and management IP from each surviving device
+        4. Sets OS type (architecture-specific, e.g., hardcoded to 'iosxe' for SD-WAN)
+        5. Injects SSH credential environment variable references
+        6. Returns list of device dicts ready for nac-test
 
         Returns:
             List of device dictionaries with all required fields:
@@ -100,8 +189,12 @@ class BaseDeviceResolver(ABC):
 
         resolved_devices: list[dict[str, Any]] = []
         self.skipped_devices = []  # Reset for each resolution
+        self.filter_diagnostics = None
         all_devices = list(self.navigate_to_devices())
         logger.debug(f"Found {len(all_devices)} devices in data model")
+
+        if ENV_DEVICE_FILTER_JSON is not None:
+            all_devices = self._apply_device_filters(all_devices)
 
         for device_data in all_devices:
             try:

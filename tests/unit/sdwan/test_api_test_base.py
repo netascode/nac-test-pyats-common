@@ -23,6 +23,7 @@ from pyats.aetest.signals import AEtestFailedSignal
 from pytest_mock import MockerFixture
 
 from nac_test_pyats_common.sdwan.api_test_base import SDWANManagerTestBase
+from tests.unit.conftest import resolve_and_inject_context
 
 # Type alias for the make_base_instance fixture
 _MakeInstance = Callable[[dict[str, Any]], SDWANManagerTestBase]
@@ -417,6 +418,7 @@ class TestSDWANManagerTestBaseSetup:
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_USERNAME", "admin")
         monkeypatch.setenv("SDWAN_PASSWORD", "password")
+        resolve_and_inject_context(monkeypatch)
 
         with patch(
             "nac_test_pyats_common.sdwan.api_test_base.SDWANManagerAuth.get_session_auth",
@@ -438,6 +440,7 @@ class TestSDWANManagerTestBaseSetup:
         """setup() calls get_token_auth() when nac-test resolved auth_method=token."""
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_API_TOKEN", "my-jwt-token")
+        resolve_and_inject_context(monkeypatch)
 
         with patch(
             "nac_test_pyats_common.sdwan.api_test_base.SDWANManagerAuth.get_token_auth",
@@ -458,6 +461,7 @@ class TestSDWANManagerTestBaseSetup:
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_USERNAME", "admin")
         monkeypatch.setenv("SDWAN_PASSWORD", "password")
+        resolve_and_inject_context(monkeypatch)
 
         with patch(
             "nac_test_pyats_common.sdwan.api_test_base.SDWANManagerAuth.get_session_auth",

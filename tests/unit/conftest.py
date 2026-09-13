@@ -8,6 +8,9 @@ from collections.abc import Callable
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
+from nac_test.core.constants import ENV_CONTROLLER_CONTEXT
+from nac_test.core.controller import resolve_controller
+from nac_test.core.types import ControllerContext
 from pyats import aetest  # type: ignore[import-untyped]
 
 CONTROLLER_ENV_PREFIXES = (
@@ -31,6 +34,22 @@ def clean_controller_env(monkeypatch: MonkeyPatch) -> None:
     for key in list(os.environ.keys()):
         if any(key.startswith(prefix) for prefix in CONTROLLER_ENV_PREFIXES):
             monkeypatch.delenv(key, raising=False)
+    monkeypatch.delenv(ENV_CONTROLLER_CONTEXT, raising=False)
+
+
+def resolve_and_inject_context(monkeypatch: MonkeyPatch) -> ControllerContext:
+    """Resolve controller from current environment and inject into ENV_CONTROLLER_CONTEXT.
+
+    Designed for happy-path tests to avoid DRY repetition.
+    """
+    ctx = resolve_controller()
+    monkeypatch.setenv(ENV_CONTROLLER_CONTEXT, ctx.to_json())
+    return ctx
+
+
+def inject_context(monkeypatch: MonkeyPatch, ctx: ControllerContext) -> None:
+    """Inject a pre-built ControllerContext into ENV_CONTROLLER_CONTEXT."""
+    monkeypatch.setenv(ENV_CONTROLLER_CONTEXT, ctx.to_json())
 
 
 @pytest.fixture

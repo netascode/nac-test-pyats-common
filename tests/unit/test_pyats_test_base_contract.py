@@ -20,130 +20,30 @@ from pyats.aetest.signals import AEtestFailedSignal
 from nac_test_pyats_common.aci.test_base import APICTestBase
 from nac_test_pyats_common.catc.api_test_base import CatalystCenterTestBase
 from nac_test_pyats_common.sdwan.api_test_base import SDWANManagerTestBase
+from tests.unit.conftest import inject_context
 
 
 @pytest.mark.parametrize(
-    ("test_base_cls", "expected_controller_type", "env", "resolved_controller_type"),
+    ("test_base_cls", "expected_controller_type", "mismatched_controller_type"),
     [
-        (
-            APICTestBase,
-            "ACI",
-            {
-                "SDWAN_URL": "https://sdwan.example.com",
-                "SDWAN_USERNAME": "admin",
-                "SDWAN_PASSWORD": "password",
-            },
-            "SDWAN",
-        ),
-        (
-            SDWANManagerTestBase,
-            "SDWAN",
-            {
-                "ACI_URL": "https://apic.example.com",
-                "ACI_USERNAME": "admin",
-                "ACI_PASSWORD": "password",
-            },
-            "ACI",
-        ),
-        (
-            CatalystCenterTestBase,
-            "CC",
-            {
-                "ACI_URL": "https://apic.example.com",
-                "ACI_USERNAME": "admin",
-                "ACI_PASSWORD": "password",
-            },
-            "ACI",
-        ),
+        (APICTestBase, "ACI", "SDWAN"),
+        (SDWANManagerTestBase, "SDWAN", "ACI"),
+        (CatalystCenterTestBase, "CC", "ACI"),
     ],
     ids=["aci", "sdwan", "catc"],
 )
 def test_setup_fails_on_controller_type_mismatch(
     test_base_cls: type[aetest.Testcase],
     expected_controller_type: str,
-    env: dict[str, str],
-    resolved_controller_type: str,
+    mismatched_controller_type: str,
     make_pyats_instance: Callable[[type], aetest.Testcase],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """setup() fails when nac-test resolved a different controller_type."""
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
-
-    test_instance = make_pyats_instance(test_base_cls)
-
-    with patch.object(test_instance, "load_data_model", return_value={"test": "data"}):
-        with pytest.raises(AEtestFailedSignal) as exc_info:
-            test_instance.setup()
-
-    assert f"controller_type={expected_controller_type}" in str(exc_info.value)
-    assert resolved_controller_type in str(exc_info.value)
-
-
-@pytest.mark.parametrize(
-    (
-        "test_base_cls",
-        "expected_controller_type",
-        "context_controller_type",
-        "cred_env",
-    ),
-    [
-        (
-            APICTestBase,
-            "ACI",
-            "SDWAN",
-            {
-                "SDWAN_URL": "https://sdwan.example.com",
-                "SDWAN_USERNAME": "admin",
-                "SDWAN_PASSWORD": "password",
-            },
-        ),
-        (
-            SDWANManagerTestBase,
-            "SDWAN",
-            "ACI",
-            {
-                "ACI_URL": "https://apic.example.com",
-                "ACI_USERNAME": "admin",
-                "ACI_PASSWORD": "password",
-            },
-        ),
-        (
-            CatalystCenterTestBase,
-            "CC",
-            "ACI",
-            {
-                "ACI_URL": "https://apic.example.com",
-                "ACI_USERNAME": "admin",
-                "ACI_PASSWORD": "password",
-            },
-        ),
-    ],
-    ids=["aci", "sdwan", "catc"],
-)
-def test_setup_fails_on_controller_type_mismatch_via_context(
-    test_base_cls: type[aetest.Testcase],
-    expected_controller_type: str,
-    context_controller_type: str,
-    cred_env: dict[str, str],
-    make_pyats_instance: Callable[[type], aetest.Testcase],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """setup() fails when NAC_TEST_CONTROLLER_CONTEXT has mismatched controller_type.
-
-    This test uses the primary controller detection path (NAC_TEST_CONTROLLER_CONTEXT)
-    instead of relying on fallback detection from legacy env vars. This ensures tests
-    remain valid when Phase 3 removes the fallback logic.
-    """
-    # Set controller context to a different controller type
+    """setup() fails when NAC_TEST_CONTROLLER_CONTEXT has mismatched controller_type."""
     ctx = ControllerContext(
-        controller_type=context_controller_type, auth_method="session"
+        controller_type=mismatched_controller_type, auth_method="session"
     )
-    monkeypatch.setenv("NAC_TEST_CONTROLLER_CONTEXT", ctx.to_json())
-
-    # Still need credential env vars for get_connection_params()
-    for key, value in cred_env.items():
-        monkeypatch.setenv(key, value)
+    inject_context(monkeypatch, ctx)
 
     test_instance = make_pyats_instance(test_base_cls)
 
@@ -152,7 +52,7 @@ def test_setup_fails_on_controller_type_mismatch_via_context(
             test_instance.setup()
 
     assert f"controller_type={expected_controller_type}" in str(exc_info.value)
-    assert context_controller_type in str(exc_info.value)
+    assert mismatched_controller_type in str(exc_info.value)
 
 
 @pytest.mark.parametrize(
@@ -175,7 +75,7 @@ def test_setup_fails_on_unsupported_auth_method(
         controller_type=controller_type,
         auth_method=unsupported_auth_method,
     )
-    monkeypatch.setenv("NAC_TEST_CONTROLLER_CONTEXT", ctx.to_json())
+    inject_context(monkeypatch, ctx)
 
     # Provide URL env var so get_controller_url() succeeds in the parent
     monkeypatch.setenv(f"{controller_type}_URL", "https://example.com")

@@ -346,8 +346,6 @@ class SDWANManagerAuth:
             >>> headers = {"Cookie": f"JSESSIONID={auth_data['jsessionid']}"}
         """
         # Determine auth method from controller context resolved by orchestrator.
-        # get_controller_context() has its own fallback path for standalone
-        # usage (env var scan), so no local fallback is needed here.
         ctx = get_controller_context()
         auth_method = ctx.auth_method
 

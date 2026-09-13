@@ -552,7 +552,7 @@ class TestScriptBodyIndentSurvival:
 
 
 # ===========================================================================
-# 8. Token auth path — get_matched_credential_set() integration
+# 8. Token auth path — get_controller_context() integration
 # ===========================================================================
 
 

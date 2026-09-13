@@ -1125,6 +1125,7 @@ class TestDeviceFilterIntegration:
         ("filter_exprs", "expected_hostnames"),
         [
             ([{"field": "hostname", "operator": "=", "value": "leaf1"}], ["leaf1"]),
+            ([{"field": "ip", "operator": "=", "value": "10.1.1.1"}], ["leaf1"]),
             ([{"field": "role", "operator": "=", "value": "leaf"}], ["leaf1", "leaf2"]),
             ([{"field": "bgp.asn", "operator": "=", "value": "65002"}], ["leaf2"]),
             (
@@ -1139,17 +1140,23 @@ class TestDeviceFilterIntegration:
                 ["leaf1", "leaf2"],
             ),
             (
+                [{"field": "site", "operator": "=~", "value": "^(sjc|fra)$"}],
+                ["leaf1", "leaf2", "spine1"],
+            ),
+            (
                 [{"field": "role", "operator": "!=", "value": "spine"}],
                 ["leaf1", "leaf2"],
             ),
             ([{"field": "hostname", "operator": "=", "value": "nonexistent"}], []),
         ],
         ids=[
-            "virtual_field_hostname",
+            "canonical_attribute_hostname",
+            "canonical_attribute_ip",
             "raw_field_role",
             "nested_field_bgp_asn",
             "multiple_and_role_site",
             "regex_match_hostname",
+            "regex_alternation_or_site",
             "negation_not_equal_spine",
             "no_match_nonexistent_hostname",
         ],

@@ -89,42 +89,41 @@ class BaseDeviceResolver(ABC):
         self.filter_diagnostics: dict[str, Any] | None = None
         logger.debug(f"Initialized {self.get_architecture_name()} resolver")
 
-    def _build_virtual_fields(
+    def _build_canonical_attributes(
         self, device_data: dict[str, Any], needed_roots: set[str]
     ) -> dict[str, Any]:
-        """Compute virtual fields lazily for device filtering."""
-        virtual: dict[str, Any] = {}
+        """Compute canonical attributes lazily for device filtering.
+
+        Canonical attributes normalize architecture-specific fields into
+        standard keys ('hostname', 'ip', 'os') across all resolvers.
+        """
+        canonical: dict[str, Any] = {}
         if "hostname" in needed_roots:
             try:
-                virtual["hostname"] = self.extract_hostname(device_data)
+                canonical["hostname"] = self.extract_hostname(device_data)
             except (KeyError, ValueError, TypeError, AttributeError):
                 pass
-        if "host" in needed_roots:
+        if "ip" in needed_roots:
             try:
-                virtual["host"] = self.extract_host_ip(device_data)
+                canonical["ip"] = self.extract_host_ip(device_data)
             except (KeyError, ValueError, TypeError, AttributeError):
                 pass
         if "os" in needed_roots:
             try:
                 os_info = self.extract_os_platform_type(device_data)
                 if isinstance(os_info, dict) and "os" in os_info:
-                    virtual["os"] = os_info["os"]
+                    canonical["os"] = os_info["os"]
             except (KeyError, ValueError, TypeError, AttributeError):
                 pass
-        if "device_id" in needed_roots:
-            try:
-                virtual["device_id"] = self.extract_device_id(device_data)
-            except (KeyError, ValueError, TypeError, AttributeError):
-                pass
-        return virtual
+        return canonical
 
     def _apply_device_filters(
         self, all_devices: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Filter raw device data models using active --device-filter criteria.
 
-        Overlays virtual canonical fields (such as 'hostname', 'host'/'ip', 'os',
-        'device_id') on top of raw device dictionaries using ChainMap, then delegates
+        Overlays canonical attributes (such as 'hostname', 'ip', 'os')
+        on top of raw device dictionaries using ChainMap, then delegates
         filter evaluation to nac_test's device_filter engine.
         """
         filter_json = os.environ.get(ENV_DEVICE_FILTER_JSON)  # type: ignore[arg-type]
@@ -136,11 +135,11 @@ class BaseDeviceResolver(ABC):
             return all_devices
 
         needed_roots = referenced_root_fields(filters)
-        # ChainMap overlays computed virtual fields on top of raw data model dict.
+        # ChainMap overlays computed canonical attributes on top of raw data model dict.
         # This allows filters on canonical attributes (e.g. 'hostname') as well as
         # raw architecture-specific model keys (e.g. 'role', 'tags') to resolve.
         device_mappings = [
-            ChainMap(self._build_virtual_fields(d, needed_roots), d)
+            ChainMap(self._build_canonical_attributes(d, needed_roots), d)
             for d in all_devices
         ]
 

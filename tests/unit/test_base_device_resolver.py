@@ -15,7 +15,10 @@ from unittest.mock import patch
 
 import pytest
 
-from nac_test_pyats_common.common.base_device_resolver import BaseDeviceResolver
+from nac_test_pyats_common.common.base_device_resolver import (
+    ENV_DEVICE_FILTER_JSON,
+    BaseDeviceResolver,
+)
 
 
 class MockDeviceResolver(BaseDeviceResolver):
@@ -1081,6 +1084,10 @@ class TestExtractDeviceIdDefault:
         assert devices[0]["hostname"] == "test-router"
 
 
+@pytest.mark.skipif(
+    ENV_DEVICE_FILTER_JSON is None,
+    reason="Device filtering requires nac-test with device_filter support (tracked in #59)",
+)
 class TestDeviceFilterIntegration:
     """Test device filtering integration via BaseDeviceResolver."""
 

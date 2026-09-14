@@ -19,6 +19,7 @@ import pytest
 from pyats.aetest.signals import AEtestFailedSignal
 
 from nac_test_pyats_common.catc.api_test_base import CatalystCenterTestBase
+from tests.unit.conftest import resolve_and_inject_context
 
 
 @pytest.fixture
@@ -42,6 +43,7 @@ class TestCatalystCenterTestBaseSetup:
         monkeypatch.setenv("CC_USERNAME", "admin")
         monkeypatch.setenv("CC_PASSWORD", "password")
         monkeypatch.setenv("CC_INSECURE", "True")
+        resolve_and_inject_context(monkeypatch)
 
         with patch(
             "nac_test_pyats_common.catc.api_test_base.CatalystCenterAuth.get_token",
@@ -64,6 +66,7 @@ class TestCatalystCenterTestBaseSetup:
         monkeypatch.setenv("CC_USERNAME", "admin")
         monkeypatch.setenv("CC_PASSWORD", "password")
         monkeypatch.setenv("CC_INSECURE", "False")
+        resolve_and_inject_context(monkeypatch)
 
         with patch(
             "nac_test_pyats_common.catc.api_test_base.CatalystCenterAuth.get_token",
@@ -80,6 +83,7 @@ class TestCatalystCenterTestBaseSetup:
         monkeypatch.setenv("CC_URL", "https://cc.example.com")
         monkeypatch.setenv("CC_USERNAME", "admin")
         monkeypatch.setenv("CC_PASSWORD", "password")
+        resolve_and_inject_context(monkeypatch)
 
         with patch(
             "nac_test_pyats_common.catc.api_test_base.CatalystCenterAuth.get_token",

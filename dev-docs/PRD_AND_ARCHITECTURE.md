@@ -437,7 +437,7 @@ PASS_FAIL_CRITERIA = (
 │  │  • AuthCache (file-based token caching)                     │   │
 │  │  • ConnectionPool (HTTP client management)                  │   │
 │  │  • Test orchestration and reporting                         │   │
-│  │  • detect_controller_type() utility                         │   │
+│  │  • Controller resolution utilities                          │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -504,8 +504,8 @@ from nac_test.pyats_core.common.ssh_base_test import SSHTestBase
 # Authentication caching infrastructure
 from nac_test.pyats_core.common.auth_cache import AuthCache
 
-# Controller type detection utility
-from nac_test.utils.controller import detect_controller_type
+# Controller context utility
+from nac_test.core.controller import get_controller_context
 
 # File discovery utility (for test_inventory.yaml)
 from nac_test.utils.file_discovery import find_data_file
@@ -722,8 +722,9 @@ class YourAuth:
 │     │                                                          │    │
 │     │  # For IOSXETestBase, this triggers auto-detection:      │    │
 │     │  ┌───────────────────────────────────────────────────┐  │    │
-│     │  │ 1. detect_controller_type()                       │  │    │
-│     │  │    └─ Checks SDWAN_URL, CC_URL env vars           │  │    │
+│     │  │ 1. get_controller_context()                       │  │    │
+│     │  │    └─ Checks resolved controller context;         │  │    │
+│     │  │       raises if none → caught, treated as UNKNOWN │  │    │
 │     │  │                                                   │  │    │
 │     │  │ 2. If UNKNOWN, infer from data model:             │  │    │
 │     │  │    └─ "sdwan" key → SDWAN                         │  │    │
@@ -893,8 +894,8 @@ POST /api/aaaLogin.json
 - `IOSXE_PASSWORD`: SSH password for edge devices
 
 **Auth Method Selection:**
-The auth mechanism is determined by `get_matched_credential_set("SDWAN")` from
-nac-test's controller detection. If the matched credential set has
+The auth mechanism is determined by `get_controller_context()` from
+nac-test's controller detection. If the resolved context has
 `auth_method="token"`, token auth is used; otherwise session auth is used.
 
 **Auth Flow (Token — 20.18+):**
@@ -1058,8 +1059,8 @@ All authentication modules use subprocess-based HTTP execution to avoid macOS fo
 
 ```
 1. Determine auth method:
-   → Call get_matched_credential_set("SDWAN") from nac-test
-   → If matched.auth_method == "token" → use token auth
+   → Call get_controller_context() from nac-test
+   → If ctx.auth_method == "token" → use token auth
    → Otherwise → use session auth
 
 2a. Token auth (_get_token_auth):
@@ -1293,11 +1294,12 @@ devices:
 │                           │                                      │
 │                           ▼                                      │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  1. detect_controller_type()  (from nac-test)            │   │
-│  │     ├─ SDWAN_URL set? → "SDWAN"                         │   │
-│  │     ├─ CC_URL set? → "CC"                               │   │
-│  │     ├─ APIC_URL set? → "ACI" (rejected - not IOS-XE)    │   │
-│  │     └─ None set? → "UNKNOWN"                            │   │
+│  │  1. get_controller_context()  (from nac-test)           │   │
+│  │     ├─ SDWAN context? → "SDWAN"                         │   │
+│  │     ├─ CC context? → "CC"                               │   │
+│  │     ├─ ACI context? → "ACI" (rejected - not IOS-XE)     │   │
+│  │     └─ No context? → raises ValueError, caught by        │   │
+│  │        IOSXETestBase → treated as "UNKNOWN"              │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                           │                                      │
 │                           ▼                                      │
@@ -1364,7 +1366,7 @@ class StandaloneIOSXEResolver(BaseDeviceResolver):
 ┌─────────────────────────────────────────────────────────────────┐
 │                Architecture Detection Priority                   │
 │                                                                  │
-│  1. Environment Variables (via detect_controller_type)          │
+│  1. Environment Variables (via resolve_controller)              │
 │     ┌─────────────────────────────────────────────────────┐    │
 │     │ SDWAN_URL + SDWAN_USERNAME + SDWAN_PASSWORD → SDWAN │    │
 │     │ CC_URL + CC_USERNAME + CC_PASSWORD → CC             │    │
@@ -1414,8 +1416,8 @@ class StandaloneIOSXEResolver(BaseDeviceResolver):
 
 | Scenario | Error Source | Message Pattern |
 |----------|--------------|-----------------|
-| Multiple controllers detected | `detect_controller_type()` | "Multiple controller credentials detected: SDWAN, CC..." |
-| Incomplete credentials | `detect_controller_type()` | "Incomplete controller credentials: SDWAN: missing SDWAN_PASSWORD" |
+| Multiple controllers detected | `resolve_controller()` | "Multiple complete controller credential sets found: SDWAN, CC..." |
+| Incomplete credentials | `resolve_controller()` | "Incomplete controller credentials: SDWAN: missing SDWAN_PASSWORD" |
 | No architecture detected | `IOSXETestBase` | "Cannot detect architecture. Data model root keys found: [...]" |
 | Controller doesn't support IOS-XE | `IOSXETestBase` | "Controller type 'ACI' does not support IOS-XE devices" |
 | No resolver registered | `IOSXETestBase` | "No IOS-XE resolver registered for controller type '...'" |
@@ -2156,7 +2158,7 @@ class MerakiDeviceResolver(BaseDeviceResolver):
 from . import meraki_resolver  # noqa: F401
 ```
 
-**3. Update `detect_controller_type()` in nac-test (if needed):**
+**3. Update `resolve_controller()` in nac-test (if needed):**
 If the controller uses environment variables, update the controller detection utility.
 
 **Result:** IOSXETestBase automatically supports the new controller type via the registry pattern. No changes needed to IOSXETestBase itself!
@@ -2301,6 +2303,6 @@ logging.getLogger("nac_test_pyats_common.common.base_device_resolver").setLevel(
 
 ## References
 
-- **nac-test PRD:** `/home/administrator/Net-As-Code/nac-test/dev-docs/PRD_AND_ARCHITECTURE.md`
+- **nac-test PRD:** `nac-test/dev-docs/PRD_AND_ARCHITECTURE.md`
 - **BaseDeviceResolver:** `nac-test-pyats-common/src/nac_test_pyats_common/common/base_device_resolver.py`
-- **Controller Detection:** `nac-test/nac_test/utils/controller.py`
+- **Controller Resolution:** `nac-test/nac_test/core/controller.py` (`resolve_controller()`, `get_controller_context()`)

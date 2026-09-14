@@ -14,7 +14,11 @@ methods are supported:
    optional XSRF token for CSRF protection.
 
 The auth method is determined by `get_controller_context()` from nac-test's
-controller detection module.
+controller detection module. That context is resolved by the nac-test
+orchestrator and handed to PyATS subprocesses via the
+`NAC_TEST_CONTROLLER_CONTEXT` environment variable, so `get_auth()` is only
+usable inside a nac-test orchestrated run — exporting `SDWAN_*` credentials
+alone is not sufficient.
 
 The module implements a multi-tier API design:
 1. _authenticate() - Low-level: direct SDWAN Manager session auth
@@ -286,9 +290,17 @@ class SDWANManagerAuth:
     def get_auth(cls) -> dict[str, Any]:
         """Get SDWAN Manager authentication data with automatic caching and renewal.
 
-        This is the primary method that consumers should use to obtain SDWAN Manager
-        authentication data. It consults the credential set matched by nac-test's
-        get_controller_context() to determine the authentication mechanism:
+        .. important::
+            **Orchestrator-only.** This method must run inside a PyATS subprocess
+            launched by nac-test. It reads the controller context that nac-test's
+            orchestrator resolved via ``resolve_controller()`` and serialized into
+            ``NAC_TEST_CONTROLLER_CONTEXT``. Calling it standalone — for example
+            from a REPL or an ad-hoc script with only ``SDWAN_*`` credentials
+            exported — raises ``ValueError``. Setting the ``SDWAN_*`` variables is
+            necessary but not sufficient.
+
+        It consults the context returned by nac-test's ``get_controller_context()``
+        to determine the authentication mechanism:
 
         - **Token auth** (auth_method="token"): Uses SDWAN_API_TOKEN directly.
           No session login required. Returns immediately with the bearer token.
@@ -301,6 +313,11 @@ class SDWANManagerAuth:
         The method uses a cache key based on the controller type ("SDWAN_MANAGER")
         and URL to ensure proper session isolation between different SDWAN Manager
         instances.
+
+        Required in all cases (set by the nac-test orchestrator, not by the user):
+            NAC_TEST_CONTROLLER_CONTEXT: Serialized ControllerContext identifying
+                the resolved controller type and auth method. Absent or malformed
+                values raise ValueError.
 
         Environment Variables Required (session auth):
             SDWAN_URL: Base URL of the SDWAN Manager
@@ -321,33 +338,17 @@ class SDWANManagerAuth:
                 - xsrf_token (str | None): XSRF token (only when auth_method="session")
 
         Raises:
-            ValueError: If required environment variables are not set for the
-                determined auth method.
+            ValueError: If NAC_TEST_CONTROLLER_CONTEXT is unset or malformed (i.e.
+                the method was called outside a nac-test orchestrated run), or if
+                the required environment variables for the determined auth method
+                are not set.
             SubprocessAuthError: If session authentication fails due to invalid
                 credentials, network issues, connection timeouts, or SDWAN Manager
                 server errors.
-
-        Example:
-            >>> # Token auth (20.18+)
-            >>> os.environ["SDWAN_URL"] = "https://sdwan-manager.example.com"
-            >>> os.environ["SDWAN_API_TOKEN"] = "my-api-token"
-            >>> auth_data = SDWANManagerAuth.get_auth()
-            >>> auth_data["auth_method"]
-            'token'
-            >>> headers = {"Authorization": f"Bearer {auth_data['api_token']}"}
-
-            >>> # Session auth (legacy)
-            >>> os.environ["SDWAN_URL"] = "https://sdwan-manager.example.com"
-            >>> os.environ["SDWAN_USERNAME"] = "admin"
-            >>> os.environ["SDWAN_PASSWORD"] = "password123"
-            >>> auth_data = SDWANManagerAuth.get_auth()
-            >>> auth_data["auth_method"]
-            'session'
-            >>> headers = {"Cookie": f"JSESSIONID={auth_data['jsessionid']}"}
         """
         # Determine auth method from controller context resolved by orchestrator.
-        # get_controller_context() has its own fallback path for standalone
-        # usage (env var scan), so no local fallback is needed here.
+        # No local fallback by design: outside an orchestrated run there is no
+        # trustworthy way to infer the auth method, so failing loudly is correct.
         ctx = get_controller_context()
         auth_method = ctx.auth_method
 

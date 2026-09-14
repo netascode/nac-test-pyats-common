@@ -148,7 +148,6 @@ class BaseDeviceResolver(ABC):
             "count_before": len(all_devices),
             "count_after": len(result.matched),
             "unknown_fields": result.unknown_fields,
-            "keys_seen": result.keys_seen,
             "filters": [str(f) for f in filters],
         }
 

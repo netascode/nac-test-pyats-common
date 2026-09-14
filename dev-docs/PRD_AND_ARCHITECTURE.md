@@ -723,7 +723,8 @@ class YourAuth:
 │     │  # For IOSXETestBase, this triggers auto-detection:      │    │
 │     │  ┌───────────────────────────────────────────────────┐  │    │
 │     │  │ 1. get_controller_context()                       │  │    │
-│     │  │    └─ Checks resolved controller context          │  │    │
+│     │  │    └─ Checks resolved controller context;         │  │    │
+│     │  │       raises if none → caught, treated as UNKNOWN │  │    │
 │     │  │                                                   │  │    │
 │     │  │ 2. If UNKNOWN, infer from data model:             │  │    │
 │     │  │    └─ "sdwan" key → SDWAN                         │  │    │
@@ -1297,7 +1298,8 @@ devices:
 │  │     ├─ SDWAN context? → "SDWAN"                         │   │
 │  │     ├─ CC context? → "CC"                               │   │
 │  │     ├─ ACI context? → "ACI" (rejected - not IOS-XE)     │   │
-│  │     └─ None set? → "UNKNOWN"                            │   │
+│  │     └─ No context? → raises ValueError, caught by        │   │
+│  │        IOSXETestBase → treated as "UNKNOWN"              │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                           │                                      │
 │                           ▼                                      │
@@ -2301,6 +2303,6 @@ logging.getLogger("nac_test_pyats_common.common.base_device_resolver").setLevel(
 
 ## References
 
-- **nac-test PRD:** `/home/administrator/Net-As-Code/nac-test/dev-docs/PRD_AND_ARCHITECTURE.md`
+- **nac-test PRD:** `nac-test/dev-docs/PRD_AND_ARCHITECTURE.md`
 - **BaseDeviceResolver:** `nac-test-pyats-common/src/nac_test_pyats_common/common/base_device_resolver.py`
-- **Controller Detection:** `nac-test/nac_test/utils/controller.py`
+- **Controller Resolution:** `nac-test/nac_test/core/controller.py` (`resolve_controller()`, `get_controller_context()`)

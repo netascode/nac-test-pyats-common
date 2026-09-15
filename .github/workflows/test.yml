@@ -98,7 +98,15 @@ jobs:
       - name: Test
         run: |
           uv sync --extra dev
-          uv run pytest
+          # TEMPORARY - REMOVE BEFORE RELEASE (#60)
+          # Device filtering needs nac_test.utils.device_filter, which is in no
+          # released nac-test. Without this, ENV_DEVICE_FILTER_JSON imports as None
+          # and TestDeviceFilterIntegration silently SKIPS, leaving the feature
+          # untested. --no-deps is required: the nac-test branch pins this package
+          # back to a git URL, and resolving that conflicts with the local checkout.
+          # Drop this step once nac-test 2.1.0 is on PyPI.
+          uv pip install --no-deps git+https://github.com/netascode/nac-test.git@feat/932-device-filter-d2d
+          uv run --no-sync pytest
 
   notification:
     name: Notification

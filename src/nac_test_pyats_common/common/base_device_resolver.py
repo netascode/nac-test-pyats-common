@@ -154,11 +154,11 @@ class BaseDeviceResolver(ABC):
         if result.unknown_fields:
             return []
 
-        return [
-            d
-            for d, dm in zip(all_devices, device_mappings, strict=False)
-            if all(f.matches(dm) for f in filters)
-        ]
+        # Reuse the selection apply_all already made rather than re-evaluating
+        # every filter against every device a second time. result.matched holds
+        # the ChainMap overlays built above; maps[-1] is the raw data model dict
+        # each was constructed from, which is what callers must receive.
+        return [dm.maps[-1] for dm in result.matched]
 
     def get_resolved_inventory(self) -> list[dict[str, Any]]:
         """Get resolved device inventory ready for SSH connection.

@@ -38,7 +38,7 @@ def clean_controller_env(monkeypatch: MonkeyPatch) -> None:
 
 
 def resolve_and_inject_context(monkeypatch: MonkeyPatch) -> ControllerContext:
-    """Resolve controller from current environment and inject into ENV_CONTROLLER_CONTEXT.
+    """Resolve controller from the environment and inject ENV_CONTROLLER_CONTEXT.
 
     Designed for happy-path tests to avoid DRY repetition.
     """

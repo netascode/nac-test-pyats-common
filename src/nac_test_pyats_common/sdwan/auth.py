@@ -291,12 +291,12 @@ class SDWANManagerAuth:
         """Get SDWAN Manager authentication data with automatic caching and renewal.
 
         .. important::
-            **Orchestrator-only.** This method must run inside a PyATS subprocess
-            launched by nac-test. It reads the controller context that nac-test's
-            orchestrator resolved via ``resolve_controller()`` and serialized into
-            ``NAC_TEST_CONTROLLER_CONTEXT``. Calling it standalone — for example
-            from a REPL or an ad-hoc script with only ``SDWAN_*`` credentials
-            exported — raises ``ValueError``. Setting the ``SDWAN_*`` variables is
+            **Orchestrator-only.** This method requires
+            ``NAC_TEST_CONTROLLER_CONTEXT``, which nac-test sets for its pre-flight
+            auth check and for PyATS subprocesses. The context is resolved by the
+            orchestrator via ``resolve_controller()``. Calling it standalone — for
+            example from a REPL or an ad-hoc script with only ``SDWAN_*``
+            credentials exported — raises. Setting the ``SDWAN_*`` variables is
             necessary but not sufficient.
 
         It consults the context returned by nac-test's ``get_controller_context()``
@@ -316,8 +316,9 @@ class SDWANManagerAuth:
 
         Required in all cases (set by the nac-test orchestrator, not by the user):
             NAC_TEST_CONTROLLER_CONTEXT: Serialized ControllerContext identifying
-                the resolved controller type and auth method. Absent or malformed
-                values raise ValueError.
+                the resolved controller type and auth method. Absent values raise
+                ValueError; malformed values raise ValueError or KeyError (e.g. a
+                missing field).
 
         Environment Variables Required (session auth):
             SDWAN_URL: Base URL of the SDWAN Manager
@@ -338,10 +339,11 @@ class SDWANManagerAuth:
                 - xsrf_token (str | None): XSRF token (only when auth_method="session")
 
         Raises:
-            ValueError: If NAC_TEST_CONTROLLER_CONTEXT is unset or malformed (i.e.
-                the method was called outside a nac-test orchestrated run), or if
-                the required environment variables for the determined auth method
-                are not set.
+            ValueError: If NAC_TEST_CONTROLLER_CONTEXT is unset (i.e. the method
+                was called outside a nac-test orchestrated run) or malformed, or
+                if the required environment variables for the determined auth
+                method are not set.
+            KeyError: If NAC_TEST_CONTROLLER_CONTEXT is missing a required field.
             SubprocessAuthError: If session authentication fails due to invalid
                 credentials, network issues, connection timeouts, or SDWAN Manager
                 server errors.

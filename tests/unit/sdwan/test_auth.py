@@ -737,15 +737,19 @@ class TestControllerContextRequired:
     """
 
     def test_get_auth_raises_without_controller_context(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
     ) -> None:
         """Complete SDWAN credentials are NOT sufficient without a resolved context."""
         monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
         monkeypatch.setenv("SDWAN_USERNAME", "admin")
         monkeypatch.setenv("SDWAN_PASSWORD", "password123")
-        monkeypatch.delenv(ENV_CONTROLLER_CONTEXT, raising=False)
 
-        with pytest.raises(ValueError) as exc_info:
+        # Stub the I/O boundary: on a Phase 2 nac-test the deprecated fallback
+        # would otherwise attempt a real login to the example host.
+        mocker.patch(
+            "nac_test_pyats_common.sdwan.auth.execute_auth_subprocess",
+            side_effect=AssertionError("auth attempted without controller context"),
+        )
+
+        with pytest.raises(ValueError, match=ENV_CONTROLLER_CONTEXT):
             SDWANManagerAuth.get_auth()
-
-        assert ENV_CONTROLLER_CONTEXT in str(exc_info.value)

@@ -1416,7 +1416,7 @@ class StandaloneIOSXEResolver(BaseDeviceResolver):
 
 | Scenario | Error Source | Message Pattern |
 |----------|--------------|-----------------|
-| Multiple controllers detected | `resolve_controller()` | "Multiple complete controller credential sets found: SDWAN, CC..." |
+| Multiple controllers detected | `resolve_controller()` | "Multiple controller credentials detected: SDWAN, CC..." |
 | Incomplete credentials | `resolve_controller()` | "Incomplete controller credentials: SDWAN: missing SDWAN_PASSWORD" |
 | No architecture detected | `IOSXETestBase` | "Cannot detect architecture. Data model root keys found: [...]" |
 | Controller doesn't support IOS-XE | `IOSXETestBase` | "Controller type 'ACI' does not support IOS-XE devices" |

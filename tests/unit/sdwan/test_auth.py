@@ -13,6 +13,7 @@ Tests SD-WAN Manager authentication:
 6. URL normalization (trailing slash handling)
 7. Script body survival through _indent_script_body() transform
 8. Token auth path — get_controller_context() integration
+9. Controller context is mandatory — real (unmocked) Phase 3 contract
 """
 
 from io import BytesIO
@@ -20,6 +21,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from nac_test.core.constants import ENV_CONTROLLER_CONTEXT
 from nac_test.core.types import ControllerContext
 from pytest_mock import MockerFixture
 
@@ -552,7 +554,7 @@ class TestScriptBodyIndentSurvival:
 
 
 # ===========================================================================
-# 8. Token auth path — get_matched_credential_set() integration
+# 8. Token auth path — get_controller_context() integration
 # ===========================================================================
 
 
@@ -709,3 +711,45 @@ class TestTokenAuth:
 
         assert result["auth_method"] == "session"
         assert result["jsessionid"] == "sess-456"
+
+
+# ===========================================================================
+# 9. Controller context is mandatory — real (unmocked) Phase 3 contract
+# ===========================================================================
+
+
+class TestControllerContextRequired:
+    """get_auth() is orchestrator-only: it requires NAC_TEST_CONTROLLER_CONTEXT.
+
+    Unlike TestTokenAuth, this deliberately does NOT mock
+    get_controller_context(). It exercises the real nac-test function, so the
+    orchestrator-only contract is pinned against the installed nac-test rather
+    than against a mock that would agree with any behaviour. This is the one
+    test that distinguishes a Phase 3 nac-test from a Phase 2 one: under Phase 2
+    the deprecated detect_controller_type() fallback resolves SDWAN from the
+    credentials below and get_auth() attempts a real connection instead.
+
+    Malformed-context handling is nac-test's contract, and propagation of its
+    ValueError is already covered by TestTokenAuth::test_context_error_propagates.
+
+    The autouse ``clean_controller_env`` fixture guarantees
+    NAC_TEST_CONTROLLER_CONTEXT is unset on entry.
+    """
+
+    def test_get_auth_raises_without_controller_context(
+        self, monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+    ) -> None:
+        """Complete SDWAN credentials are NOT sufficient without a resolved context."""
+        monkeypatch.setenv("SDWAN_URL", "https://sdwan.example.com")
+        monkeypatch.setenv("SDWAN_USERNAME", "admin")
+        monkeypatch.setenv("SDWAN_PASSWORD", "password123")
+
+        # Stub the I/O boundary: on a Phase 2 nac-test the deprecated fallback
+        # would otherwise attempt a real login to the example host.
+        mocker.patch(
+            "nac_test_pyats_common.sdwan.auth.execute_auth_subprocess",
+            side_effect=AssertionError("auth attempted without controller context"),
+        )
+
+        with pytest.raises(ValueError, match=ENV_CONTROLLER_CONTEXT):
+            SDWANManagerAuth.get_auth()

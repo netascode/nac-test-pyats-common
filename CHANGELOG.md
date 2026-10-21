@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Parameterized `get_token()`, `get_token_auth()`, and `get_session_auth()` so `TestBase` instances use parent-resolved credentials directly
   - Upgraded minimum `nac-test` dependency to `2.1.0b1`
 
+- **`SDWANManagerAuth.get_auth()` requires the orchestrator-provided controller context**
+  - Requires `NAC_TEST_CONTROLLER_CONTEXT`, which nac-test sets for pre-flight and PyATS subprocesses; standalone use with only `SDWAN_*` variables raises
+
 ### Fixed
 
 - Passed `verify_ssl` to ACI authentication POST for consistency with other adapters ([#46](https://github.com/netascode/nac-test-pyats-common/pull/46))

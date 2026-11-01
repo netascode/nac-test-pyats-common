@@ -27,7 +27,6 @@ classifiers = [
 keywords = ["cisco", "network", "testing", "pyats", "nac", "aci", "sdwan", "catalyst-center"]
 
 dependencies = [
-    "filelock>=3.25.2",
     "httpx~=0.28",  # HTTP client for auth
     "nac-test>=2.1.0b1",  # TODO: remove b1 notation post 2.1.0 release
 ]

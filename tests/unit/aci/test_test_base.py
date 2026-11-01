@@ -18,6 +18,7 @@ import pytest
 from pyats.aetest.signals import AEtestFailedSignal
 
 from nac_test_pyats_common.aci.test_base import APICTestBase
+from tests.unit.conftest import resolve_and_inject_context
 
 
 @pytest.fixture
@@ -40,6 +41,7 @@ class TestAPICTestBaseSetup:
         monkeypatch.setenv("ACI_URL", "https://apic.example.com")
         monkeypatch.setenv("ACI_USERNAME", "admin")
         monkeypatch.setenv("ACI_PASSWORD", "password")
+        resolve_and_inject_context(monkeypatch)
 
         with patch(
             "nac_test_pyats_common.aci.test_base.APICAuth.get_token",
@@ -59,6 +61,7 @@ class TestAPICTestBaseSetup:
         monkeypatch.setenv("ACI_URL", "https://apic.example.com")
         monkeypatch.setenv("ACI_USERNAME", "admin")
         monkeypatch.setenv("ACI_PASSWORD", "password")
+        resolve_and_inject_context(monkeypatch)
 
         with patch(
             "nac_test_pyats_common.aci.test_base.APICAuth.get_token",

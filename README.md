@@ -1,5 +1,5 @@
 [![Tests](https://github.com/netascode/nac-test-pyats-common/actions/workflows/test.yml/badge.svg)](https://github.com/netascode/nac-test-pyats-common/actions/workflows/test.yml)
-![Python Support](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-informational "Python Support: 3.10, 3.11, 3.12")
+![Python Support](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-informational "Python Support: 3.11, 3.12, 3.13, 3.14")
 
 # nac-test-pyats-common
 
@@ -83,7 +83,7 @@ Each NAC architecture repository previously contained duplicated PyATS infrastru
 
 ## Installation
 
-Python 3.10+ is required. Don't have Python 3.10 or later? See [Python 3 Installation & Setup Guide](https://realpython.com/installing-python/).
+Python 3.11+ is required. Don't have Python 3.11 or later? See [Python 3 Installation & Setup Guide](https://realpython.com/installing-python/).
 
 ```shell
 pip install nac-test-pyats-common

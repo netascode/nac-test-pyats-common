@@ -87,7 +87,7 @@
 - Plugin architecture for registering new controller-specific resolvers
 
 **Version:** 1.0.0
-**Python Requirement:** 3.10+
+**Python Requirement:** 3.11+
 **Primary Dependencies:** nac-test, httpx, pyyaml
 
 ---

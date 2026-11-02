@@ -20,11 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Dropped Python 3.10 support**
-  - `requires-python` is now `>=3.11,<3.15`, aligned with `nac-test`
-  - Added Python 3.14 to the classifiers and CI test matrix; removed 3.10
-  - Updated ruff/mypy target versions to 3.11 and refreshed `uv.lock`
-
 - **Controller Resolution via nac-test Core Resolvers** ([#46](https://github.com/netascode/nac-test-pyats-common/pull/46))
   - Replaced direct environment variable reads and hardcoded auth logic with `nac-test` core controller resolvers (`get_controller_context`, `get_connection_params`, `should_verify_ssl`)
   - Added `EXPECTED_CONTROLLER_TYPE` and `SUPPORTED_AUTH_METHODS` guards across ACI, Catalyst Center, and SD-WAN `TestBase` classes

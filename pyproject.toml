@@ -3,7 +3,7 @@ name = "nac-test-pyats-common"
 version = "0.4.0b2"
 description = "Architecture adapters for Network as Code (NaC) PyATS testing - auth classes, test base classes, and device resolvers"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.15"
 license = {text = "MPL-2.0"}
 authors = [
     {name = "Andrea Testino", email = "atestini@cisco.com"},
@@ -17,10 +17,10 @@ classifiers = [
     "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Testing",
     "Topic :: System :: Networking",
 ]
@@ -28,7 +28,7 @@ keywords = ["cisco", "network", "testing", "pyats", "nac", "aci", "sdwan", "cata
 
 dependencies = [
     "httpx~=0.28",  # HTTP client for auth
-    "nac-test>=2.1.0b1",  # TODO: remove b1 notation post 2.1.0 release
+    "nac-test>=2.1.0b3",  # TODO: remove b1 notation post 2.1.0 release
 ]
 
 [project.optional-dependencies]
@@ -76,7 +76,7 @@ include = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 88
 
 [tool.ruff.lint]
@@ -105,7 +105,7 @@ convention = "google"
 known-first-party = ["nac_test_pyats_common"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true

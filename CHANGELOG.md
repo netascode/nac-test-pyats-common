@@ -24,7 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaced direct environment variable reads and hardcoded auth logic with `nac-test` core controller resolvers (`get_controller_context`, `get_connection_params`, `should_verify_ssl`)
   - Added `EXPECTED_CONTROLLER_TYPE` and `SUPPORTED_AUTH_METHODS` guards across ACI, Catalyst Center, and SD-WAN `TestBase` classes
   - Parameterized `get_token()`, `get_token_auth()`, and `get_session_auth()` so `TestBase` instances use parent-resolved credentials directly
-  - Upgraded minimum `nac-test` dependency to `2.1.0b1`
 
 - **`SDWANManagerAuth.get_auth()` requires the orchestrator-provided controller context**
   - Requires `NAC_TEST_CONTROLLER_CONTEXT`, which nac-test sets for pre-flight and PyATS subprocesses; standalone use with only `SDWAN_*` variables raises
